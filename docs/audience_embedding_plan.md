@@ -193,3 +193,45 @@ mod(crc32(to_utf8(CAST(req_user_id AS VARCHAR))), 100) < 5
 - 03(시드) 쿼리는 전체 캠페인 풀링으로 작성함 — 특정 캠페인으로 좁힐 실제 니즈가 생기면 J2처럼 `cmp_no` 필터를 추가.
 - 4~5번(Athena 실행 → CSV 다운로드 → 학습/추론 실행)은 사용자가 Athena에서 01~05.sql을 돌려야 진행 가능.
 - 6번(fusion + 스코어링 스크립트)은 아직 코드가 없음 — 4~5번으로 임베딩 CSV가 확보되면 다음 단계로 작성.
+
+### 7-4. 첫 학습 실행 결과 + `media` 아이템 재정의 (2026-07-07)
+
+01~05.sql을 Athena에서 실행해 `sample_data/audience_embedding/`에 CSV 확보 후 실제 학습을
+시도한 기록. 두 가지 문제를 겪고 대응했다.
+
+**문제 1: 데이터량/속도** — 01(2개월치, 캠페인 무필터) 결과가 2,197만 행(3.75GB)이라 `user_profile`
+(단순 오토인코더, 30 epoch)은 26분 만에 끝났지만 `media_sequence`(SASRec, 30 epoch 기본값)는
+1시간 40분 넘게 걸려도 안 끝남 — CPU 전용 환경에서 Transformer를 59만 유저 규모로 학습하는
+게 근본적으로 무거운 것이 원인(py-spy로 프로세스 스택을 찍어 실제 forward pass 중임을 확인,
+멈춘 게 아니었음). 대응:
+- **로컬 다운샘플링**: Athena 재실행 없이, 이미 받은 CSV를 로컬에서 유저 10만 명으로 추가로
+  줄임(`req_user_id` 단위, pandas `sample()`). Athena에서의 5% 샘플링과 별개로 로컬에서 한 번
+  더 줄인 것 — 반복 실험 속도를 위한 것이고, 최종 프로덕션 실행 시엔 필요 없다.
+- **epoch 30 → 5**로 축소 (파일럿 목적, `config/addi_media_sequence.json`).
+- **로그 스팸 수정**: `train/user_profile.py`, `train/media_sequence.py`의 tqdm 호출에
+  `mininterval=5.0` 추가 — 콘솔이 아닌 파일로 리다이렉트할 때 반복 갱신이 그대로 쌓여 로그가
+  과도하게 커지는 문제 완화.
+- 위 조정 후 5 epoch/10만 유저 학습이 약 6~7분으로 단축됨.
+
+**문제 2 (더 중요함): `media`(시퀀스 아이템) 자체가 거의 상수였음** — `media`를 원본 abi
+설계대로 `app_bundle`로 채웠더니, addi CTV 인벤토리에서는 app_bundle이 통신사 IPTV 앱
+3종(`com.skb.adui`/`com.kt.google.ad.viewer`/`com.lguplus.iptv.base.livetvinput`)뿐이라
+`vocab size=5`(3개 값 + `<NA>` + `<UNK>`)로 사실상 상수. 다음-아이템 예측이 아무 의미가 없어져
+epoch 1부터 loss가 `0.0000`으로 수렴(=아무것도 안 배움). **`content_genre`의 대표(콤마로 구분된
+문자열의 첫) 토큰으로 `media`를 바꿔서 재정의**했다 — vocab size가 115로 늘고, loss가
+`3.70 → 2.56 → 2.45 → 2.40 → 2.37`로 정상적으로 감소(5 epoch 기준, 계속 완만히 하락 중이라
+epoch을 늘리면 더 내려갈 여지 있음). `01_top500_media_visit.sql`/
+`04_new_users_top500_media_visit_jun.sql`에 반영 완료 — `media` 컬럼명은 embedding 코드와의
+계약을 위해 그대로 두되, 실제 값은 app_bundle이 아니라 콘텐츠 장르 대표값이다.
+`content_genre` 컬럼(보조 피처, 전체 다중 장르)은 그대로 유지 — media(대표 장르 1개)와 일부
+겹치지만 코드 수정 없이 재사용 가능하다는 이점이 더 크다고 판단.
+
+**현재 아티팩트** (모두 `user-to-ad-encoder/data/models/`, 프로덕션 재학습 전 파일럿용):
+| 모듈 | 학습 데이터 | epoch | 상태 |
+|---|---|---|---|
+| `user_profile_addi` | 4~5월 59만 유저 (Athena 5% 샘플) | 30 | 완료 |
+| `media_sequence_addi_genre` | 4~5월 10만 유저 (로컬 추가 샘플), `media`=content_genre 대표값 | 5 | 완료 |
+
+다음 프로덕션 학습 시엔 (a) `media_sequence`도 59만 유저 전체로, (b) epoch을 30(또는 loss
+추이를 보며 조정)으로 되돌리는 것을 고려 — 지금은 파이프라인이 끝까지 도는지 확인하는
+파일럿이라 축소된 채로 두었다.

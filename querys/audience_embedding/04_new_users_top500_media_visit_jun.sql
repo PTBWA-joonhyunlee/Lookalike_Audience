@@ -13,6 +13,9 @@
 -- 샘플링 : 01/02와 동일한 이유로(전체 트래픽, 데이터량 과다) 유저 단위 5% 샘플링을 적용했다.
 --          지금은 파일럿 단계라 스코어링 대상도 함께 축소 — 실제 후보 리스트를 산출할 때는
 --          이 조건을 제거하고 전체 신규 유저로 재실행해야 한다.
+-- media 컬럼 재정의 (2026-07-07): 01_top500_media_visit.sql과 동일하게 app_bundle 대신
+--          app_content_genre의 대표(첫) 장르 토큰을 쓴다 — 학습 때 fit한 vocab_media.json과
+--          같은 값 체계여야 하므로 반드시 01과 동일한 방식으로 맞춘다 (01 상단 주석 참고).
 -- ============================================================
 
 WITH prior_users AS (
@@ -27,7 +30,7 @@ raw_visit AS (
         b.req_id,
         b.req_user_id,
         b.device_ifa,
-        NULLIF(CAST(b.app_bundle AS VARCHAR), '') AS media,
+        NULLIF(SPLIT_PART(CAST(b.app_content_genre AS VARCHAR), ',', 1), '') AS media,
         NULLIF(CAST(b.app_content_genre AS VARCHAR), '') AS content_genre,
         NULLIF(CAST(b.imp_ad_type AS VARCHAR), '')  AS ad_type,
         CAST(NULL AS INTEGER) AS connection_type,  -- addi_bid_log_flatten에는 없는 컬럼 (01과 동일 사유)

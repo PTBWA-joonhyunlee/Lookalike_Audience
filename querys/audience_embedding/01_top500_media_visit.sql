@@ -22,6 +22,16 @@
 --          유저는 항상 같은 샘플에 포함/제외되고(결정적), 기간을 다시 줄이는 대신 유저 수만
 --          줄이므로 선택된 유저의 시퀀스 길이는 그대로 보존된다. 02_user_profile.sql과 반드시
 --          동일한 샘플링 조건을 써야 두 임베딩이 같은 유저 집합을 가리킨다.
+-- media 컬럼 재정의 (2026-07-07): 원래 abi 원본처럼 app_bundle을 media(시퀀스 아이템)로 썼더니
+--          addi CTV 인벤토리는 app_bundle이 통신사 IPTV 앱 3종(SKB/KT/LGU+)뿐이라 vocab이
+--          거의 상수라 SASRec 다음-아이템 예측이 무의미해짐(학습 loss가 첫 epoch부터 0에 수렴,
+--          실제로는 아무것도 안 배움). 그래서 media 컬럼에는 app_bundle 대신 콘텐츠 장르의
+--          대표값(app_content_genre를 콤마로 나눈 첫 토큰)을 넣는다 — 113종으로 다양성이
+--          훨씬 크고 실제 시청 취향 신호에 가깝다. content_genre 컬럼은 기존처럼 전체 다중
+--          장르 문자열을 그대로 유지(보조 피처, EmbeddingBag 평균)한다 — media(대표 장르)와
+--          content_genre(전체 장르 집합)가 일부 겹치지만 embedding 코드 수정 없이 재사용
+--          가능하다는 이점이 더 크다고 판단해 그대로 둔다. 컬럼 이름은 embedding 코드와의
+--          계약을 위해 "media"를 유지하지만, 실제 값은 더 이상 app_bundle이 아니다.
 -- ============================================================
 
 WITH raw_visit AS (
@@ -32,8 +42,8 @@ WITH raw_visit AS (
         -- addi_bid_log_flatten에는 site_page/site_content_genre/site_content_language/
         -- device_connectiontype/device_pxratio 컬럼이 아예 없음(COLUMN_NOT_FOUND 확인, 2026-07-07).
         -- abi_bid_log_flatten과 달리 순수 앱(CTV/Android TV) 인벤토리만 있고 웹 인벤토리가 없어서로 추정.
-        -- media는 app_bundle만 사용 (site_page 폴백 없음).
-        NULLIF(CAST(app_bundle AS VARCHAR), '') AS media,
+        -- media = app_content_genre의 대표(첫) 장르 토큰 — app_bundle이 아님 (위 "media 컬럼 재정의" 참고).
+        NULLIF(SPLIT_PART(CAST(app_content_genre AS VARCHAR), ',', 1), '') AS media,
         NULLIF(CAST(app_content_genre AS VARCHAR), '') AS content_genre,
         NULLIF(CAST(imp_ad_type AS VARCHAR), '')  AS ad_type,
         -- device_connectiontype 컬럼 자체가 없어 전부 NULL로 출력 (embedding 코드와의 컬럼 계약 유지 목적).
