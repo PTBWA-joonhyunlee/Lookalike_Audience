@@ -17,6 +17,11 @@
 --          02_user_profile.sql과 반드시 동일 기간 유지. 6월 신규 유저 스코어링 입력은
 --          04_new_users_top500_media_visit_jun.sql이 따로 담당(이 파일과 top500 vocab이
 --          어긋나면 안 되므로 재사용하지 않고 별도 쿼리로 분리).
+-- 샘플링 : 캠페인 무필터 2개월치라 데이터량이 너무 커서(7일 8,990만건 기준 2개월 환산 시
+--          7~8억 건대) 유저 단위 5% 샘플링을 추가했다. req_user_id 해시값 기준이라 같은
+--          유저는 항상 같은 샘플에 포함/제외되고(결정적), 기간을 다시 줄이는 대신 유저 수만
+--          줄이므로 선택된 유저의 시퀀스 길이는 그대로 보존된다. 02_user_profile.sql과 반드시
+--          동일한 샘플링 조건을 써야 두 임베딩이 같은 유저 집합을 가리킨다.
 -- ============================================================
 
 WITH raw_visit AS (
@@ -43,6 +48,7 @@ WITH raw_visit AS (
       AND trim(CAST(req_user_id AS VARCHAR)) <> ''
       AND CAST(req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (device_lmt IS NULL OR CAST(device_lmt AS VARCHAR) <> '1')
+      AND mod(crc32(to_utf8(CAST(req_user_id AS VARCHAR))), 100) < 5   -- ← 유저 단위 5% 샘플링 (crc32는 항상 0 이상이라 abs 불필요)
 ),
 media_rank AS (
     -- 방문 유저 수(req_id distinct) 기준 상위 500개 미디어만 채택

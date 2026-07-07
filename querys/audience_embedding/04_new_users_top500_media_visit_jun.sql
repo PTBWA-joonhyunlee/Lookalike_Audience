@@ -10,6 +10,9 @@
 --      어긋나므로 재필터링하지 않는다 (embedding-spec-top500-media-visit.md §7 로직 참고).
 --   2) 대상 기간이 2026-06 전체, req_user_id가 04-05월 bid log에 없는 경우만 포함.
 --   30분 재방문 제거(세션 dedup)는 데이터 품질 문제라 학습/추론 동일하게 적용한다.
+-- 샘플링 : 01/02와 동일한 이유로(전체 트래픽, 데이터량 과다) 유저 단위 5% 샘플링을 적용했다.
+--          지금은 파일럿 단계라 스코어링 대상도 함께 축소 — 실제 후보 리스트를 산출할 때는
+--          이 조건을 제거하고 전체 신규 유저로 재실행해야 한다.
 -- ============================================================
 
 WITH prior_users AS (
@@ -37,6 +40,7 @@ raw_visit AS (
       AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
       AND p.req_user_id IS NULL   -- ← 04-05월에 없었던 유저만 (신규 유저 필터)
+      AND mod(crc32(to_utf8(CAST(b.req_user_id AS VARCHAR))), 100) < 5   -- ← 유저 단위 5% 샘플링 (파일럿 단계, 실제 후보 산출 시 제거)
 ),
 flagged AS (
     SELECT
