@@ -167,10 +167,10 @@ distinct 유저가 수백만 단위 — N² 불가능). 대신:
 | 1 | `01_top500_media_visit.sql`/`02_user_profile.sql` 기간을 `2026-04-01~2026-05-31`로 변경 | **완료** |
 | 2 | 4~5월 시드(관심 유저) 집합 쿼리 — `03_seed_interested_users_apr_may.sql` (J2 기반, cmp_no 필터 없이 전체 캠페인 풀링, T2 이상만 출력, req_user_id 그레인) | **완료** |
 | 3 | 6월 신규 유저 추출 쿼리 — `04_new_users_top500_media_visit_jun.sql`(media_sequence 입력), `05_new_users_user_profile_jun.sql`(user_profile 입력). 둘 다 04-05월 bid log에 없던 `req_user_id`만 anti-join으로 필터. 04는 학습 시 top500 재필터링을 하지 않음(vocab 어긋남 방지) | **완료** |
-| 4 | `user-to-ad-encoder`에서 학습: `--input`을 4~5월 CSV(01/02 결과)로, `--output`을 `data/models/*_addi`로 (§3 그대로) | 기존 코드 재사용, Athena 실행 → CSV 확보 후 바로 가능 |
-| 5 | `user-to-ad-encoder`에서 추론: 6월 신규 유저 CSV(04/05 결과) → 임베딩 추출 (§3 그대로) | 기존 코드 재사용 |
-| 6 | fusion(concat, §4-1) + 시드(03 결과) centroid 코사인 거리 스코어링 스크립트 | **신규 작성 필요** — 아직 어느 저장소에도 없음 |
-| 7 | 결과(6월 신규 유저별 유사도 점수) 산출 | 6번 완료 후 |
+| 4 | `user-to-ad-encoder`에서 학습: `--input`을 4~5월 CSV(01/02 결과)로, `--output`을 `data/models/*_addi`로 (§3 그대로) | **완료** (§7-4 참고 — media_sequence는 content_genre 재정의 + 파일럿 축소본으로 학습) |
+| 5 | `user-to-ad-encoder`에서 추론: 6월 신규 유저 CSV(04/05 결과) → 임베딩 추출 (§3 그대로) | **완료** |
+| 6 | fusion(concat, §4-1) + 시드(03 결과) centroid 코사인 거리 스코어링 스크립트 | **완료** — `user-to-ad-encoder/scoring/lookalike.py` (§7-5 참고) |
+| 7 | 결과(6월 신규 유저별 유사도 점수) 산출 | **완료** — §7-5 결과 참고 |
 | 8 | (후속) 시간이 지나 6월 유저의 실제 postback이 쌓이면 lift backtest (§4-3) | 향후 |
 
 ### 7-2-1. 샘플링 (2026-07-07 추가)
@@ -235,3 +235,45 @@ epoch을 늘리면 더 내려갈 여지 있음). `01_top500_media_visit.sql`/
 다음 프로덕션 학습 시엔 (a) `media_sequence`도 59만 유저 전체로, (b) epoch을 30(또는 loss
 추이를 보며 조정)으로 되돌리는 것을 고려 — 지금은 파이프라인이 끝까지 도는지 확인하는
 파일럿이라 축소된 채로 두었다.
+
+### 7-5. 첫 파일럿 스코어링 결과 (2026-07-07)
+
+전체 파이프라인(학습 → 추론 → fusion → 스코어링)을 처음부터 끝까지 돌려봄.
+
+**추론**: `inference.user_profile`/`inference.media_sequence`를 pool(4~5월, 59만 유저 규모)과
+target(6월 신규 유저, 2.5만 규모) 양쪽에 실행. media_sequence는 학습 때와 동일하게 media를
+content_genre 대표값으로 바꾼 입력을 사용(`04`/`01` 결과에 로컬 후처리 스크립트로 재적용 —
+Athena 재실행 없이 이미 받은 CSV를 변환).
+
+**fusion + 스코어링**: `scoring/lookalike.py` 신규 작성 (`evaluation/distance.py`와 같은 스타일).
+`user_profile`(64) + `media_sequence`(64) 임베딩을 req_user_id로 concat(128차원) → 시드
+집합(03 결과, T2 이상)에 속하는 유저만 L2-정규화 후 평균 내 centroid 계산 → 6월 신규 유저
+전원과 코사인 유사도 계산.
+
+```
+.venv\Scripts\python.exe -m scoring.lookalike \
+  --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
+  --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
+  --seed-ids <03_seed_interested_users_apr_may.csv 경로> \
+  --target-profile-emb data/embeddings/user_profile_jun_new.csv \
+  --target-media-emb data/embeddings/media_sequence_jun_new.csv \
+  --output data/embeddings/lookalike_scored_jun.csv
+```
+
+**결과**: 시드 542,511명 중 pool(5% 샘플)에 임베딩이 존재하는 27,059명(5.0%, 샘플링 비율과
+정확히 일치)으로 centroid 계산. 6월 신규 유저 25,449명 스코어링 완료
+(`data/embeddings/lookalike_scored_jun.csv`).
+
+점수 분포가 매끈한 정규분포가 아니라 **군집 형태**로 나옴:
+| 구간 | 인원 | 비율 |
+|---|---:|---:|
+| 0.83~0.92 (상위 군집) | 14,153 | 55.6% |
+| 0.65~0.74 (중간 군집) | 8,326 | 32.7% |
+| 그 외(0.03~0.65, 롱테일) | 2,970 | 11.7% |
+
+**해석 시 주의**: 이 군집화는 addi CTV 데이터의 낮은 카디널리티(§7-4에서 확인한 device_make/
+carrier 등 극소 vocab) 때문에 `user_profile` 임베딩이 몇 가지 "전형적 프로필"로 뭉치는 영향이
+커서일 가능성이 있다 — 즉 상위 군집이 반드시 "가장 관심 있을 유저"라기보다 "시드와 디바이스/
+콘텐츠 프로필이 같은 군집에 속한 유저"에 가까울 수 있다. **아직 실제 전환 여부로 검증된 바
+없음(§4-3 backtest 전)** — 1차 파일럿 산출물로만 취급하고, 상위 군집(0.83 이상, 14,153명)을
+1차 후보로 제안하되 최종 컷 기준은 백테스트 이후 확정 권장.
