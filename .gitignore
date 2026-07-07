@@ -1,0 +1,9 @@
+# Claude Code session data (contains credentials, local history) - never commit
+.claude_session/
+
+# Raw/derived data CSVs from Athena (real device/user identifiers) - never commit
+sample_data/
+
+# OS cruft
+.DS_Store
+Thumbs.db

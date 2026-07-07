@@ -1,0 +1,33 @@
+-- ============================================================================
+-- ADDI 데이터 정합성 검증 쿼리 - 테이블 매핑
+--
+-- 이 폴더의 모든 쿼리는 아래 4개 테이블을 대상으로 합니다.
+-- 실제 Glue Data Catalog의 database.table 명이 다르면 각 파일에서 이 이름들을
+-- 찾아서 교체하세요. 하이픈(-)이 포함된 DB명은 큰따옴표로 감싸야 합니다.
+--
+--   BID_LOG  = "prod-ptbwa-dw".addi_bid_log_flatten
+--   POSTBACK = "prod-ptbwa-dw".addi_postback_log
+--   ADS      = "ptbwa-metadata".addi_advertisement
+--   BIZ      = "ptbwa-metadata".addi_business
+--
+-- 공통 규칙:
+--   - CSV 기반 외부 테이블은 빈 값이 NULL이 아니라 '' 로 저장되는 경우가 많아
+--     모든 NULL 체크는 `col IS NULL OR trim(CAST(col AS VARCHAR)) = ''` 형태로 작성했습니다.
+--     (Glue 크롤러가 숫자처럼 보이는 컬럼을 double/bigint로 추론해두는 경우가 있어
+--      trim/regexp_like/LIKE/문자열 비교 전에는 항상 CAST(col AS VARCHAR)로 감쌌습니다.)
+--   - 각 쿼리 상단 주석의 "기대값"과 다르게 나오면 정합성 이슈로 보고 결과를 공유해주세요.
+--
+-- 기간 범위: 2026-06-01 ~ 2026-06-07 (7일간)
+--   BID_LOG/POSTBACK 는 year/month/day 파티션 컬럼을 기준으로 아래 조건으로 필터링했습니다.
+--     year = '2026' AND month = '06' AND day BETWEEN '01' AND '07'
+--   advertisement/business 는 시점 스냅샷 성격의 마스터 데이터라 위 기간 필터를 적용하지 않았습니다.
+--   (필요시 advertisement는 startdt/enddt로 해당 기간에 활성화된 캠페인만 필터링 가능)
+--
+-- 파일 구성:
+--   A1~A4 : 기본 볼륨 / 널 완전성 체크
+--   B1~B5 : 기본키(PK) 중복 체크
+--   C1~C5 : 참조 무결성(FK) 체크
+--   D1~D8 : 값 도메인 / 범위 체크
+--   E1~E2 : 파티션(year/month/day/hour) 일관성 체크
+--   F1~F2 : 크로스 테이블 퍼널(funnel) 정합성
+-- ============================================================================
