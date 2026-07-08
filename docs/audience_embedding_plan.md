@@ -314,3 +314,72 @@ carrier 등 극소 vocab) 때문에 `user_profile` 임베딩이 몇 가지 "전�
 3. centroid 대신 k-NN 스코어링으로 전환 (§4-2에서 이미 후보로 언급) — 시드가 다봉분포라면
    단일 centroid가 구조를 뭉갤 수 있음.
 4. 파일럿 축소(10만 유저/5epoch)를 프로덕션 스케일(59만 유저/30epoch 등)로 되돌려서 재확인.
+
+## 8. 명령어 모음 (End-to-End 실행 커맨드)
+
+지금까지 실행한 전체 파이프라인을 처음부터 다시 돌릴 때 참고용. 1번(Athena)은 이 저장소
+담당, 2번부터는 `user-to-ad-encoder`(별도 저장소, venv 필요) 담당. 현재 SQL은 **파일럿 상태
+(유저 단위 5% 샘플링 포함)** 라 실제 서비스 규모로 돌릴 땐 §7-2-1에서 언급한 샘플링 조건
+(`mod(crc32(...), 100) < 5`)을 지우고 재실행해야 한다.
+
+### 8-1. 데이터 생성 (Athena, `querys/audience_embedding/`)
+
+| # | 파일 | 산출물 → 저장 위치(`user-to-ad-encoder/data/`) |
+|---|---|---|
+| 1 | `01_top500_media_visit.sql` | `addi_top500_media_visit.csv` (학습용, media=content_genre 대표값) |
+| 2 | `02_user_profile.sql` | `addi_user_profile.csv` (학습용) |
+| 3 | `03_seed_interested_users_apr_may.sql` | `addi_seed_interested_users_apr_may.csv` (시드 목록, req_user_id 그레인) |
+| 4 | `04_new_users_top500_media_visit_jun.sql` | `addi_new_users_top500_media_visit_jun.csv` (6월 신규 유저 시퀀스) |
+| 5 | `05_new_users_user_profile_jun.sql` | `addi_new_users_user_profile_jun.csv` (6월 신규 유저 프로필, req_user_id↔device_ifa 매핑도 여기서 나옴) |
+| 6 | `06_postback_jun_for_backtest.sql` | `addi_postback_max_tier_jun.csv` (device_ifa별 6월 최고 도달 tier) |
+
+각 SQL을 Athena에서 실행 → CSV 다운로드 → 위 파일명으로 `user-to-ad-encoder/data/`에 저장.
+(01/04의 media 컬럼은 이제 SQL 단에서 이미 content_genre 대표값으로 나오므로, 예전에 썼던
+로컬 후처리 스왑 스크립트는 더 이상 필요 없다 — §7-4는 SQL 수정 전 이미 받아둔 CSV를 임시로
+고친 기록이라 신규 실행에는 해당 없음.)
+
+### 8-2. 학습 (`user-to-ad-encoder`, 최초 1회만 — 이후엔 8-3/8-4만 반복)
+
+```
+cd user-to-ad-encoder
+.venv\Scripts\python.exe -m train.user_profile --input data/addi_user_profile.csv --output data/models/user_profile_addi
+.venv\Scripts\python.exe -m train.media_sequence --input data/addi_top500_media_visit.csv --output data/models/media_sequence_addi_genre
+```
+
+파일럿에서는 `media_sequence`가 30분 넘게 걸려서(§7-4) `config/addi_media_sequence.json`
+(epoch 5, 10만 유저로 로컬 다운샘플)으로 축소해서 돌렸다. 프로덕션 규모로 돌릴 땐 `--config`
+없이 기본값(epoch 30, 전체 유저)으로 실행 권장.
+
+### 8-3. 추론 (pool=4~5월 전체, target=6월 신규 유저 — 매번 새 데이터가 생기면 반복)
+
+```
+.venv\Scripts\python.exe -m inference.user_profile   --input data/addi_user_profile.csv                 --model-dir data/models/user_profile_addi        --output data/embeddings/user_profile_apr_may.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/addi_top500_media_visit.csv            --model-dir data/models/media_sequence_addi_genre --output data/embeddings/media_sequence_apr_may.csv
+.venv\Scripts\python.exe -m inference.user_profile   --input data/addi_new_users_user_profile_jun.csv        --model-dir data/models/user_profile_addi        --output data/embeddings/user_profile_jun_new.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/addi_new_users_top500_media_visit_jun.csv  --model-dir data/models/media_sequence_addi_genre --output data/embeddings/media_sequence_jun_new.csv
+```
+
+### 8-4. 스코어링 (fusion + centroid 코사인 유사도, §4-1/§4-2)
+
+```
+.venv\Scripts\python.exe -m scoring.lookalike \
+  --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
+  --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
+  --seed-ids data/addi_seed_interested_users_apr_may.csv \
+  --target-profile-emb data/embeddings/user_profile_jun_new.csv \
+  --target-media-emb data/embeddings/media_sequence_jun_new.csv \
+  --output data/embeddings/lookalike_scored_jun.csv
+```
+
+### 8-5. 백테스트 (실제 postback 있는 기간에만 가능, §4-3/§7-6)
+
+```
+.venv\Scripts\python.exe -m evaluation.backtest \
+  --scored data/embeddings/lookalike_scored_jun.csv --score-col lookalike_score --scored-id-col req_user_id \
+  --labels data/addi_postback_max_tier_jun.csv --label-col max_tier --label-id-col ifa --label-threshold 1 \
+  --id-map data/addi_new_users_user_profile_jun.csv --map-from-col req_user_id --map-to-col device_ifa \
+  --output data/embeddings/lookalike_scored_jun_backtest.csv
+```
+
+`--label-threshold`는 "몇 tier 이상을 전환으로 볼지"(1=T2 참여시작 이상, 4=T3 이상, 6=T4
+완료만) — `querys/audience_list_extraction/J2`의 문턱값 조정과 같은 개념.
