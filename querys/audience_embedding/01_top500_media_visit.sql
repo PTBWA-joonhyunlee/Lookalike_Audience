@@ -1,9 +1,10 @@
 -- ============================================================
 -- 01_top500_media_visit.sql
 -- 목적   : addi 오디언스 임베딩 파이프라인의 base 테이블이자 media_sequence(SASRec) 학습 입력.
---          C:\Users\data\workspace\user-to-ad-encoder 프로젝트의 01_top500_media_visit.sql을
---          addi_bid_log_flatten 소스에 맞게 이식한 버전. 컬럼 이름/그레인을 원본과 동일하게
---          유지해 embedding/media_sequence 코드를 그대로 재사용할 수 있게 한다 (수정 없음).
+--          원래 별도 저장소였던 user-to-ad-encoder 프로젝트(현재는 이 저장소에 합쳐짐,
+--          README.md 참고)의 01_top500_media_visit.sql을 addi_bid_log_flatten 소스에 맞게
+--          이식한 버전. 컬럼 이름/그레인을 원본과 동일하게 유지해 embedding/media_sequence
+--          코드를 그대로 재사용할 수 있게 한다 (수정 없음).
 -- 소스   : prod-ptbwa-dw.addi_bid_log_flatten (원본은 abi_bid_log_flatten)
 -- 차이점 : 원본에는 없는 컴플라이언스 필터 추가 — docs/audience_list_project.md에서 확정한
 --          정책(동의 필터 req_ext_allow_user_data_collection='1', LMT 옵트아웃 제외)을 그대로 적용.

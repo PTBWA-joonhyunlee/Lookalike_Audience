@@ -1,40 +1,41 @@
-# 특정 광고 관심 사용자 리스트 프로젝트
+# 규칙 기반 관심 사용자 리스트 (J1/J2)
 
-`data_schema.md`, `data_validation_report.md`에 이어지는 문서. 특정 광고에 관심 있는 사용자(디바이스) 리스트를 추출하는 프로젝트의 설계 결정과 파일럿 결과를 정리합니다.
+임베딩 없이 bid+postback 로그만으로 특정 광고(`cmp_no`)에 이미 반응한 유저를 뽑는 트랙.
+실행 방법은 [`README.md`](../README.md) §6, 전체 조사 과정/의사결정 히스토리는
+[`_archive/audience_list_project_full.md`](_archive/audience_list_project_full.md) 참고.
 
 ## 확정된 설계 결정
 
 | 항목 | 결정 | 근거 |
 |---|---|---|
-| **광고 식별자** | `cmp_no`(+`ag_no`) 사용. `adspid` 미사용 | `adcampaign`/`adgroup`/`adcreative` 등 후보 테이블을 전수 조사했으나 `addi_bid_log_flatten`/`addi_postback_log`의 `cmp_no`·`ag_no`(10000+대)와 연결되는 매핑이 존재하지 않음(값 범위 자체가 다름, billing-id 우회 경로도 매칭 0건). 사용자 확인 결과 별도 외부 매핑도 없음 |
-| **유저 식별자** | `device_ifa`(=`postback_log.ifa`, 100% 동일 확인) 기본 키. `req_user_id`는 참고용 보조 키 | G4에서 두 컬럼 100% 오버랩 확인. `req_user_id`는 92.8%만 채워지고 일부(0.85% 디바이스) 1:N 흔들림 있어 보조 지표로만 사용 |
-| **동의(컴플라이언스) 필터** | `req_ext_allow_user_data_collection = '1'`만 포함. NULL/미채움은 **제외 유지** (보수적 정책, 사용자 확정) | H6: 값 분포 `'1'`=93%, `'0'`=3%, NULL=4%. K1-2에서 `media_id=B8BKL2YDDVZQ`(`tv.anypoint.skb`) 매체는 이 필드가 100% 미채움으로 확인 — 유저의 실제 거부가 아니라 매체 연동 이슈로 보이지만, 리스크 회피를 위해 보수적으로 제외하기로 결정 |
-| **옵트아웃 필터** | `device_lmt = '1'`인 디바이스 제외 | 추적 제한 요청 디바이스는 항상 제외 (채움률 0.03%로 낮지만 컴플라이언스상 필수) |
-| **디바이스ID 정제** | `^[0-9a-fA-F-]{36}$` UUID 형식만 포함 | G6: `{PSID}` 미치환 매크로, `test_*` 값 등 placeholder 극소량(전체의 0.00001% 미만) 확인, 정제 비용 낮음 |
-| **관심도 티어** | T1 노출만 / T2 참여시작(`i`,`v_start`) / T3 중간참여(`v_mid`+) / T4 고관여·완료(`v_complete`) | `postback_log.log_type` 퀀타일 이벤트 기반 |
-| **참여 강도 지표** | `engagement_stage_cnt` = `count(DISTINCT log_type)`, `count(*)` 사용 금지 | B2에서 확인된 `2026-06-02T23:41:13` 등 대량 중복 postback 적재 때문에 단순 건수 카운트는 신뢰 불가 |
+| 광고 식별자 | `cmp_no`(+`ag_no`) 사용, `adspid` 미사용 | 둘 사이 매핑 없음(전수 조사로 확인) |
+| 유저 식별자 | `device_ifa`(=`postback_log.ifa`, 100% 동일) 기본 키, `req_user_id` 보조 키 | |
+| 컴플라이언스 필터 | `req_ext_allow_user_data_collection='1'`만 포함(NULL 제외), `device_lmt='1'` 제외 | 보수적 정책, 확정됨 |
+| 디바이스ID 정제 | UUID 형식(`^[0-9a-fA-F-]{36}$`)만 포함 | placeholder 값 제외 |
+| 관심도 티어 | T1 노출만 / T2 참여시작(`i`,`v_start`) / T3 중간참여(`v_mid`+) / T4 고관여·완료(`v_complete`) | |
+| 참여 강도 지표 | `count(DISTINCT log_type)` 사용, `count(*)` 금지 | 중복 적재 로그로 인한 왜곡 방지 |
 
-## 산출 쿼리
-- `querys/audience_list_extraction/J1_audience_tier_full.sql` — 캠페인 전체 노출자 + 티어 분포(검증용)
-- `querys/audience_list_extraction/J2_interested_users_final.sql` — 최종 관심 사용자 리스트 (문턱값 조정 가능)
+## 쿼리
+
+- `querys/audience_list_extraction/J1_audience_tier_full.sql` — 대상 캠페인 전체 노출자 + 티어 분포(T1 포함)
+- `querys/audience_list_extraction/J2_interested_users_final.sql` — 최종 리스트(T2 이상만)
+
+둘 다 상단의 `cmp_no` 값을 원하는 캠페인 번호로 교체해서 재사용.
 
 ## 파일럿 결과 (cmp_no=10115, 2026-06-01~06-07)
 
-| 티어 | 인원 | 비율(전체 대상자 대비) |
+| 티어 | 인원 | 비율 |
 |---|---:|---:|
 | 전체 대상자(컴플라이언스 필터 통과) | 38,557 | 100% |
 | T1 노출만 | 29,424 | 76.3% |
 | T2 참여시작 | 52 | 0.13% |
 | T3 중간참여 | 1,827 | 4.7% |
 | T4 고관여(완료) | 7,254 | 18.8% |
-| **최종 리스트 (T2 이상, J2)** | **9,133** | **23.7%** |
+| **최종 리스트(J2, T2 이상)** | **9,133** | **23.7%** |
 
-한번 참여를 시작하면 79%(7,254/9,133)가 끝까지 완주하는 이분법적 패턴을 보입니다.
+산출물: `data/audience_list_extraction/J1_audience_tier_full_cmp10115.csv`,
+`J2_interested_users_final_cmp10115.csv`.
 
-동의 필터 적용 전(참고, G7) 이 캠페인의 완료자는 14,766명이었으나, `tv.anypoint.skb` 매체의 동의값 미채움 문제로 9,934명이 제외되어 최종 7,254명만 남았습니다(K1 진단, 사용자 확인 후 제외 유지 결정).
-
-## 남은 선택적 확장 작업
-- 여러 캠페인으로 확장 (J1/J2의 `cmp_no IN (...)` 조정)
-- 빈도(impression_cnt)·최근성(last_engaged_at) 기반 스코어링 추가
-- `tv.anypoint.skb` 매체 동의값 미채움 — 매체 담당자에게 기술 연동 확인 요청 (별도 트랙)
-- DSP/외부 시스템 업로드용 포맷 정의 (필요시)
+동의 필터 적용 전 이 캠페인의 완료자는 14,766명이었으나, 특정 매체(`tv.anypoint.skb`)의
+동의 필드가 100% 미채움이라 9,934명이 제외되어 최종 7,254명만 남음 — 매체 연동 이슈로
+추정되지만 리스크 회피를 위해 보수적으로 제외 유지하기로 확정(사용자 결정).

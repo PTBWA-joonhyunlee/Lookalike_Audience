@@ -1,8 +1,19 @@
 # Claude Code session data (contains credentials, local history) - never commit
 .claude_session/
+.claude/
 
-# Raw/derived data CSVs from Athena (real device/user identifiers) - never commit
-sample_data/
+# Data CSVs/embeddings/model artifacts (real device/user identifiers, large binaries) - never commit
+data/
+
+# Python virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# Local config (may contain machine-specific paths) - example files are tracked explicitly
+config/*
+!config/train_config.example.json
+!config/inference_config.example.json
 
 # OS cruft
 .DS_Store

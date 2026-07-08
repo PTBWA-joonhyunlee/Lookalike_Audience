@@ -1,9 +1,10 @@
 -- ============================================================
 -- 02_user_profile.sql
 -- 목적   : 유저별 인구통계/디바이스 프로필. 반드시 req_user_id 1행 보장.
---          user-to-ad-encoder 프로젝트의 02_user_profile.sql을 addi_bid_log_flatten 소스에
---          맞게 이식. 컬럼 이름/그레인을 원본과 동일하게 유지해 embedding/user_profile 코드를
---          그대로 재사용 (수정 없음).
+--          원래 별도 저장소였던 user-to-ad-encoder 프로젝트(현재는 이 저장소에 합쳐짐,
+--          README.md 참고)의 02_user_profile.sql을 addi_bid_log_flatten 소스에 맞게 이식.
+--          컬럼 이름/그레인을 원본과 동일하게 유지해 embedding/user_profile 코드를 그대로
+--          재사용 (수정 없음).
 -- 소스   : addi_bid_log_flatten (최신 로그 1건 기준 device/지역/언어/네트워크)
 -- 차이점 : 원본에는 없는 컴플라이언스 필터 추가(동의='1', LMT 옵트아웃 제외) — 01과 동일 정책.
 -- 기간   : 2026-04-01~2026-05-31 (학습 데이터) — 01_top500_media_visit.sql과 동일 기간 유지.

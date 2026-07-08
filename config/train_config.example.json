@@ -1,0 +1,8 @@
+{
+  "_comment": "cp config/train_config.example.json config/<이름>.json 으로 복사해서 값을 채운 뒤 python -m train.<모듈> --config config/<이름>.json 으로 사용한다. config/train_config.example.json을 제외한 config/ 아래 파일은 .gitignore되어 커밋되지 않는다.",
+  "dataset_path": "data/user_profile.csv",
+  "output_model_path": "data/models/user_profile",
+  "num_epochs": 30,
+  "batch_size": 256,
+  "learning_rate": 0.001
+}

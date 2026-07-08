@@ -1,6 +1,10 @@
 # CLAUDE.md
 
-`addi_data_embedding` 저장소에서 작업할 때 참고할 프로젝트 컨텍스트.
+`addi_data_embedding` 저장소에서 작업할 때 참고할 프로젝트 컨텍스트. SQL/문서 저장소였던 이
+repo와 임베딩 모델 코드 저장소(`user-to-ad-encoder`)를 2026-07-08에 하나로 합쳤다 — 이제
+Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference/`, `scoring/`,
+`evaluation/`)가 같은 저장소에 있다. 실행 방법 전체는 [`README.md`](README.md) 참고, 이
+문서는 작업 시 지켜야 할 규칙 위주.
 
 ## 프로젝트 목표
 
@@ -10,23 +14,17 @@
 - **규칙 기반 티어 추출** (완료): `querys/audience_list_extraction/` — bid/postback 로그로
   T1(노출)~T4(완료) 티어를 매기고 관심 유저 리스트를 뽑는다. 설계 결정은
   `docs/audience_list_project.md` 참고.
-- **임베딩 기반 유사 오디언스 탐색** (진행 중): `querys/audience_embedding/` — addi 데이터로
-  유저 임베딩을 만든다. 모델 코드는 이 repo가 아니라 별도 저장소
-  `C:\Users\data\workspace\user-to-ad-encoder`에 있고(스키마만 맞으면 그대로 재사용 가능),
-  이 repo는 그 코드가 기대하는 컬럼 계약에 맞춘 SQL만 만든다. 설계/학습 계획은
-  `docs/audience_embedding_plan.md` 참고.
-
-## 현재 단기 목표
-
-**4~5월 addi bid log + addi postback log로 임베딩 모델을 학습 → 6월 신규 유저 대상으로
-임베딩 거리를 계산한다.** 실행 계획은 `docs/audience_embedding_plan.md` §7 참고.
+- **임베딩 기반 유사 오디언스 탐색** (파일럿 완료, 프로덕션 전환 전): `querys/audience_embedding/`
+  01~06.sql로 데이터를 만들고, `train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/
+  스코어링/백테스트한다. 모델 구조는 `docs/model_architecture.md`, 실행 커맨드는 `README.md` 참고.
 
 ## 데이터를 얻는 방법 (이 repo에는 Athena 접근 권한이 없음)
 
 1. 필요한 데이터가 있으면 SQL을 `querys/<주제별 폴더>/`에 파일로 작성한다 (파일 하나에 쿼리
    하나, 번호+설명 이름).
 2. 사용자가 그 SQL을 AWS Athena 콘솔에서 직접 실행하고 결과를 CSV로 받는다.
-3. 사용자가 그 CSV를 `sample_data/<대응 폴더>/`에 올려주면, 그때 읽고 해석한다.
+3. 사용자가 그 CSV를 `data/raw/`(임베딩 파이프라인) 또는 해당 쿼리 폴더에 대응하는 위치에
+   올려주면, 그때 읽고 해석한다.
 4. Athena 에러 메시지나 CSV를 사용자가 붙여넣으면, 원인을 파악해 해당 SQL 파일을 직접
    고친다 — 데이터를 직접 조회할 수 없으므로 항상 이 왕복으로 진행한다.
 
@@ -38,25 +36,34 @@
   실제 array/row 타입인 컬럼은 `UNNEST`/`any_match`/`contains`로 다뤄야지 문자열 비교로
   다루면 안 된다.
 - **기간 필터**: `addi_bid_log_flatten`/`addi_postback_log` 등 로그 테이블은 항상
-  `year`/`month`/`day` 파티션으로 필터링한다. 기본 파일럿 기간은 `2026-06-01~06-07`. 관련된
-  여러 쿼리(bid/postback 페어 등)는 기간을 서로 동일하게 맞춘다.
+  `year`/`month`/`day` 파티션으로 필터링한다. 관련된 여러 쿼리(bid/postback 페어 등)는 기간을
+  서로 동일하게 맞춘다. 임베딩 파이프라인은 학습=2026-04~05, 스코어링 대상=2026-06.
 - **컴플라이언스 필터 (오디언스 추출/임베딩 공통 필수)**: `req_ext_allow_user_data_collection = '1'`
   인 로그만 포함(NULL/미채움은 보수적으로 제외 — 사용자 확정 정책), `device_lmt = '1'`(옵트아웃)
   디바이스는 제외. 근거는 `docs/audience_list_project.md` 참고.
 - **식별자**: 광고 식별자는 `cmp_no`(+`ag_no`)를 쓴다 — `addi_advertisement.adspid`와는
-  매핑이 없음(전수 조사로 확인됨, `querys/audience_list_discovery/_archived/` 참고). 유저
-  식별자는 `device_ifa`(=`postback_log.ifa`, 100% 동일)가 기본 키, `req_user_id`는 보조 키.
+  매핑이 없음(전수 조사로 확인됨). 이 때문에 `addi_business`(광고주 정보)도 유저/캠페인
+  어느 쪽에도 못 붙는다(`README.md` "알려진 이슈" 참고). 유저 식별자는
+  `device_ifa`(=`postback_log.ifa`, 100% 동일)가 기본 키, `req_user_id`는 보조 키.
 - **addi_bid_log_flatten은 앱(CTV/Android TV) 전용 인벤토리**: `site_page`/`site_content_genre`/
   `site_content_language`/`device_connectiontype`/`device_pxratio` 컬럼이 없다(형제 테이블
-  `abi_bid_log_flatten`에는 있음). 다른 프로젝트 SQL을 이식할 때 컬럼 존재 여부를
-  `sample_data/raw/`의 실제 헤더로 먼저 확인한다.
+  `abi_bid_log_flatten`에는 있음). 다른 프로젝트 SQL을 이식할 때 컬럼 존재 여부를 실제
+  CSV 헤더로 먼저 확인한다.
+- **media_sequence 임베딩의 `media` 컬럼은 `app_bundle`이 아니라 `content_genre` 대표값**이다
+  — addi CTV는 app_bundle이 통신사 앱 3종뿐이라 다음-아이템 예측이 무의미해서 재정의했다
+  (`docs/model_architecture.md` §2 참고). 비슷한 실수를 반복하지 않도록 새 시퀀스 피처를
+  추가할 때 카디널리티를 먼저 확인한다.
 - **쿼리 정리**: 가설을 검증하다 결론이 나서(매핑 없음 확인, 방향 폐기 등) 더 재실행할 일이
   없는 쿼리는 지우지 않고 `_archived/` 하위 폴더로 옮기고, 상위 README에 결론과 반영된 곳을
   남긴다.
+- **문서 정리**: 이 저장소는 히스토리/의사결정 로그보다 "지금 어떻게 실행하고 뭐가 나오는지"를
+  우선한다. 상세 조사 과정이나 지나간 의사결정 서술은 `docs/_archive/`에 두고, 최상위
+  문서(`README.md`, `docs/*.md`)는 실행 방법과 산출물 표 위주로 간결하게 유지한다.
 
 ## 문서
 
+- `README.md` — 전체 파이프라인 실행 커맨드 + 산출물 위치 (가장 먼저 볼 문서)
 - `docs/data_schema.md` — 원본 4개 테이블 스키마
-- `docs/data_validation_report.md` — 데이터 정합성 검증 결과
+- `docs/model_architecture.md` — 임베딩 모델 구조/하이퍼파라미터, fusion/스코어링 방식 비교
 - `docs/audience_list_project.md` — 규칙 기반 T1~T4 관심 유저 리스트 설계/파일럿 결과
-- `docs/audience_embedding_plan.md` — 임베딩 기반 유사 오디언스 설계 + 학습 계획
+- `docs/_archive/` — 위 문서들의 상세 조사 과정/의사결정 히스토리 원본 (참고용, 갱신 안 함)
