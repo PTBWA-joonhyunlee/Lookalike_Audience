@@ -1,0 +1,11 @@
+{
+  "_comment": "cp config/train_supervised_lookalike.example.json config/<이름>.json 으로 복사해서 값을 채운 뒤 python -m scoring.train_supervised_lookalike --config config/<이름>.json 으로 사용한다. config/train_supervised_lookalike.example.json을 제외한 config/ 아래 파일은 .gitignore되어 커밋되지 않는다.",
+  "pool_profile_emb": "data/embeddings/user_profile_apr_may.csv",
+  "pool_media_emb": "data/embeddings/media_sequence_apr_may.csv",
+  "seed_ids": "data/raw/03_seed_interested_users_apr_may.csv",
+  "model_out": "data/models/fusion_classifier_addi",
+  "id_col": "req_user_id",
+  "num_epochs": 20,
+  "batch_size": 512,
+  "learning_rate": 0.001
+}

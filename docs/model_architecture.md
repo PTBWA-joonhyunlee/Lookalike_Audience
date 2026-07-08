@@ -74,9 +74,11 @@ media(장르 대표값), content_genre(전체 장르, 보조), ad_type(보조), 
 90%는 순위를 못 매김 — addi CTV의 낮은 카디널리티(1절 참고) 때문에 `user_profile` 임베딩이
 몇 가지 "전형적 프로필"로 뭉치는 영향으로 추정.
 
-### 3-2. 지도학습 fusion 분류기 (`scoring/supervised_lookalike.py`, 권장)
+### 3-2. 지도학습 fusion 분류기 (`scoring/train_supervised_lookalike.py` + `scoring/infer_supervised_lookalike.py`, 권장)
 
-fused 128차원 벡터 위에 얕은 MLP를 얹어 "시드=1 / 비시드=0" 라벨로 직접 지도학습.
+fused 128차원 벡터 위에 얕은 MLP를 얹어 "시드=1 / 비시드=0" 라벨로 직접 지도학습. 분류기
+학습(train)과 저장된 분류기로 신규 유저를 스코어링(infer)하는 스크립트가 분리돼 있다 —
+`scoring/fusion_classifier.py`(모델 정의 + 아티팩트 저장/로드)를 공유한다.
 
 ```
 Linear(128→64) → ReLU → Dropout(0.2) → Linear(64→1) → sigmoid = 스코어

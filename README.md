@@ -12,7 +12,7 @@ querys/       Athena SQL — 이 환경엔 Athena 접근 권한이 없어 콘솔
 embedding/    모델 구조/데이터셋/전처리 정의 (user_profile, media_sequence) — train/inference가 공유
 train/        학습 실행 진입점 (아티팩트 저장까지만, 임베딩은 안 뽑음)
 inference/    학습된 모델로 재학습 없이 임베딩 추출
-scoring/      fusion + lookalike 스코어링 (centroid 방식, 지도학습 분류기 방식)
+scoring/      fusion + lookalike 스코어링 (centroid 방식 / 지도학습 분류기 방식 — 후자는 train·infer 분리)
 evaluation/   임베딩 거리 확인(distance.py), 스코어 대비 실제 결과 백테스트(backtest.py)
 data/         쿼리 결과 CSV / 임베딩 / 모델 아티팩트 (git 추적 안 됨, .gitignore)
 docs/         테이블 스키마 레퍼런스 + 모델 아키텍처 스펙
@@ -94,16 +94,29 @@ GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 �
 
 ### 4-2. 지도학습 분류기 (권장)
 
+train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 재학습 없이 스코어링)로 나뉜다
+— `embedding/` 모델들의 train→inference 구조와 동일.
+
 ```
-.venv\Scripts\python.exe -m scoring.supervised_lookalike \
+.venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
   --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
   --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
   --seed-ids data/raw/03_seed_interested_users_apr_may.csv \
+  --model-out data/models/fusion_classifier_addi
+
+.venv\Scripts\python.exe -m scoring.infer_supervised_lookalike \
+  --model-dir data/models/fusion_classifier_addi \
   --target-profile-emb data/embeddings/user_profile_jun_new.csv \
   --target-media-emb data/embeddings/media_sequence_jun_new.csv \
-  --output data/embeddings/supervised_lookalike_scored_jun.csv \
-  --model-out data/models/fusion_classifier_addi
+  --output data/embeddings/supervised_lookalike_scored_jun.csv
 ```
+
+새 기간 신규 유저를 스코어링만 다시 할 땐(분류기 재학습 불필요) 두 번째 커맨드만
+`--target-*`/`--output`을 바꿔 반복하면 된다.
+
+옵션을 CLI 대신 JSON으로 관리하려면 `--config config/<이름>.json`을 쓴다
+(`config/train_supervised_lookalike.example.json`, `config/infer_supervised_lookalike.example.json`
+참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
 
 **결과 비교(2026-07-07 파일럿, 6월 신규 유저 25,449명 기준)**:
 

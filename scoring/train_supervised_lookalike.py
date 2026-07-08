@@ -1,4 +1,4 @@
-# scoring/supervised_lookalike.py
+# scoring/train_supervised_lookalike.py
 #
 # scoring/lookalike.py(시드 centroid 코사인 유사도)의 지도학습 버전. 첫 백테스트(addi_data_
 # embedding docs/audience_embedding_plan.md §7-6)에서 unsupervised centroid가 최하위 10%는
@@ -8,42 +8,30 @@
 # 한다 — centroid까지의 단일 방향 거리보다 표현력이 높다(비선형 결합 가능).
 #
 # 임베딩 자체(user_profile/media_sequence)는 재학습하지 않는다 — 그 위에 얹는 얕은 분류기만
-# 학습한다. 시드 비율이 낮아(파일럿 기준 pool의 ~4~5%) BCEWithLogitsLoss에 pos_weight로
-# 클래스 불균형을 보정한다.
+# 학습해서 아티팩트(model.pt, meta.json)로 저장한다. 학습된 분류기로 신규 유저를 스코어링하려면
+# infer_supervised_lookalike.py를 쓴다. 시드 비율이 낮아(파일럿 기준 pool의 ~4~5%)
+# BCEWithLogitsLoss에 pos_weight로 클래스 불균형을 보정한다.
 #
 # CLI:
-#   .venv\Scripts\python.exe -m scoring.supervised_lookalike \
+#   .venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
 #     --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
 #     --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
-#     --seed-ids data/addi_seed_interested_users_apr_may.csv \
-#     --target-profile-emb data/embeddings/user_profile_jun_new.csv \
-#     --target-media-emb data/embeddings/media_sequence_jun_new.csv \
-#     --output data/embeddings/supervised_lookalike_scored_jun.csv \
-#     [--model-out data/models/fusion_classifier_addi]
+#     --seed-ids data/raw/03_seed_interested_users_apr_may.csv \
+#     --model-out data/models/fusion_classifier_addi
+#
+# --config: 위 옵션들을 담은 JSON 설정 파일 (config/train_supervised_lookalike.example.json
+#   참고). 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선한다.
 
 import argparse
-import os
 
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 
+from scoring.fusion_classifier import FusionClassifier, save_artifacts
 from scoring.lookalike import ID_COL, load_fused_embeddings
-
-
-class FusionClassifier(nn.Module):
-    def __init__(self, in_dim: int, hidden_dim: int = 64, dropout: float = 0.2):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x).squeeze(-1)
+from scoring.train_config import load_train_config
 
 
 def _rank_auc(scores: np.ndarray, labels: np.ndarray) -> float:
@@ -121,56 +109,61 @@ def train_classifier(
     return model
 
 
-def score(model: FusionClassifier, target_df: pd.DataFrame, id_col: str = ID_COL) -> pd.DataFrame:
-    emb_cols = [c for c in target_df.columns if c != id_col]
-    X = torch.from_numpy(target_df[emb_cols].to_numpy(dtype=np.float32))
-    model.eval()
-    with torch.no_grad():
-        probs = torch.sigmoid(model(X)).numpy()
-    out = pd.DataFrame({id_col: target_df[id_col].astype(str), "lookalike_score": probs})
-    return out.sort_values("lookalike_score", ascending=False).reset_index(drop=True)
-
-
 def main():
-    parser = argparse.ArgumentParser(description="시드 라벨로 fused 임베딩 위에 지도학습 분류기를 학습하고 신규 유저를 스코어링한다.")
-    parser.add_argument("--pool-profile-emb", required=True)
-    parser.add_argument("--pool-media-emb", required=True)
-    parser.add_argument("--seed-ids", required=True)
-    parser.add_argument("--target-profile-emb", required=True)
-    parser.add_argument("--target-media-emb", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--model-out", help="학습된 분류기 가중치 저장 경로 (생략 시 저장 안 함)")
-    parser.add_argument("--id-col", default=ID_COL)
-    parser.add_argument("--num-epochs", type=int, default=20)
-    parser.add_argument("--batch-size", type=int, default=512)
-    parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser = argparse.ArgumentParser(description="시드 라벨로 fused 임베딩 위에 지도학습 분류기를 학습하고 저장한다.")
+    parser.add_argument("--pool-profile-emb")
+    parser.add_argument("--pool-media-emb")
+    parser.add_argument("--seed-ids")
+    parser.add_argument("--model-out", help="학습된 분류기 아티팩트(model.pt, meta.json) 저장 경로")
+    parser.add_argument("--id-col", default=None)
+    parser.add_argument("--num-epochs", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--learning-rate", type=float, default=None)
+    parser.add_argument(
+        "--config",
+        help="pool_profile_emb/pool_media_emb/seed_ids/model_out/id_col/num_epochs/batch_size/learning_rate를 "
+        "담은 JSON 설정 파일 (config/train_supervised_lookalike.example.json 참고). 개별 CLI 옵션을 "
+        "같이 주면 그 값이 config보다 우선한다.",
+    )
     args = parser.parse_args()
 
-    pool_df = load_fused_embeddings(args.pool_profile_emb, args.pool_media_emb, args.id_col)
+    cfg = load_train_config(args.config) if args.config else {}
+    pool_profile_emb = args.pool_profile_emb or cfg.get("pool_profile_emb")
+    pool_media_emb = args.pool_media_emb or cfg.get("pool_media_emb")
+    seed_ids_path = args.seed_ids or cfg.get("seed_ids")
+    model_out = args.model_out or cfg.get("model_out")
+    id_col = args.id_col or cfg.get("id_col", ID_COL)
+    num_epochs = args.num_epochs if args.num_epochs is not None else cfg.get("num_epochs", 20)
+    batch_size = args.batch_size if args.batch_size is not None else cfg.get("batch_size", 512)
+    lr = args.learning_rate if args.learning_rate is not None else cfg.get("learning_rate", 1e-3)
+
+    missing = [
+        name
+        for name, val in [
+            ("--pool-profile-emb", pool_profile_emb),
+            ("--pool-media-emb", pool_media_emb),
+            ("--seed-ids", seed_ids_path),
+            ("--model-out", model_out),
+        ]
+        if not val
+    ]
+    if missing:
+        parser.error(f"{', '.join(missing)}을(를) 주거나 --config에 해당 키를 지정해야 한다.")
+
+    pool_df = load_fused_embeddings(pool_profile_emb, pool_media_emb, id_col)
     print(f"[INFO] pool fused 임베딩: {len(pool_df):,}명, 차원 {pool_df.shape[1] - 1}")
 
-    seed_ids = set(pd.read_csv(args.seed_ids)[args.id_col].astype(str))
+    seed_ids = set(pd.read_csv(seed_ids_path)[id_col].astype(str))
     model = train_classifier(
         pool_df,
         seed_ids,
-        id_col=args.id_col,
-        num_epochs=args.num_epochs,
-        batch_size=args.batch_size,
-        lr=args.learning_rate,
+        id_col=id_col,
+        num_epochs=num_epochs,
+        batch_size=batch_size,
+        lr=lr,
     )
 
-    if args.model_out:
-        os.makedirs(args.model_out, exist_ok=True)
-        torch.save(model.state_dict(), os.path.join(args.model_out, "model.pt"))
-        print(f"[INFO] 분류기 저장: {args.model_out}")
-
-    target_df = load_fused_embeddings(args.target_profile_emb, args.target_media_emb, args.id_col)
-    print(f"[INFO] target fused 임베딩: {len(target_df):,}명, 차원 {target_df.shape[1] - 1}")
-
-    scored = score(model, target_df, args.id_col)
-    scored.to_csv(args.output, index=False)
-    print(f"[INFO] 스코어링 완료: {args.output} ({len(scored):,}명)")
-    print(scored["lookalike_score"].describe())
+    save_artifacts(model, model_out)
 
 
 if __name__ == "__main__":
