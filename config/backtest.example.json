@@ -1,0 +1,15 @@
+{
+  "_comment": "cp config/backtest.example.json config/<이름>.json 으로 복사해서 값을 채운 뒤 python -m evaluation.backtest --config config/<이름>.json 으로 사용한다. config/backtest.example.json을 제외한 config/ 아래 파일은 .gitignore되어 커밋되지 않는다.",
+  "scored": "data/embeddings/supervised_lookalike_scored_jun.csv",
+  "score_col": "lookalike_score",
+  "scored_id_col": "req_user_id",
+  "labels": "data/raw/06_postback_max_tier_jun.csv",
+  "label_col": "max_tier",
+  "label_id_col": "ifa",
+  "label_threshold": 1,
+  "id_map": "data/raw/05_new_users_user_profile_jun.csv",
+  "map_from_col": "req_user_id",
+  "map_to_col": "device_ifa",
+  "n_buckets": 10,
+  "output": "data/embeddings/supervised_lookalike_scored_jun_backtest.csv"
+}

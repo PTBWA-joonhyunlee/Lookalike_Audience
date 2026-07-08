@@ -138,6 +138,9 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 `--label-threshold`: 1=T2(참여시작) 이상, 4=T3 이상, 6=T4(완료)만 — 몇 tier 이상을 "전환"으로
 볼지 조정.
 
+옵션을 CLI 대신 JSON으로 관리하려면 `--config config/<이름>.json`을 쓴다
+(`config/backtest.example.json` 참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
+
 ## 6. 규칙 기반 티어 추출 (J1/J2 — postback 있는 과거 캠페인 전용, 별도 트랙)
 
 임베딩 없이 bid+postback 로그만으로 "이미 반응한 유저"를 T1(노출)~T4(완료) 티어로 뽑는
