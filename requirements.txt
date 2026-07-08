@@ -1,4 +1,5 @@
+# Common dependencies (torch excluded). Install requirements-cpu.txt or
+# requirements-gpu.txt depending on whether the machine has a GPU (see README.md).
 numpy>=1.26.0
 pandas>=2.0.0
-torch>=2.2.0
 tqdm>=4.66.0

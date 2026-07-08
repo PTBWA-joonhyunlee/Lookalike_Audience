@@ -1,6 +1,7 @@
 # Claude Code session data (contains credentials, local history) - never commit
 .claude_session/
 .claude/
+.bkit
 
 # Data CSVs/embeddings/model artifacts (real device/user identifiers, large binaries) - never commit
 data/

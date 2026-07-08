@@ -25,6 +25,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
+from embedding.common.device import resolve_device
 from embedding.common.io import latest_file
 from embedding.common.train_config import load_train_config
 from embedding.common.vocab import CategoryVocab
@@ -105,7 +106,12 @@ def train(
     lr: float = config.LEARNING_RATE,
     input_path: Optional[str] = None,
     artifact_dir: Optional[str] = None,
+    device: str = "auto",
 ) -> None:
+    device = resolve_device(device)
+    logger.info("device=%s", device)
+    print(f"[INFO] device={device}")
+
     df = _load_source(input_path)
 
     cat_vocabs = _fit_vocabs(df)
@@ -121,7 +127,7 @@ def train(
         numeric_fields=list(numeric_scalers.keys()),
         hidden_dim=config.HIDDEN_DIM,
         embed_dim=config.EMBED_DIM,
-    )
+    ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     cat_criterion = torch.nn.CrossEntropyLoss()
@@ -130,6 +136,10 @@ def train(
     for epoch in range(1, num_epochs + 1):
         total_loss = 0.0
         for _, cat, numeric, numeric_mask in tqdm(loader, desc=f"epoch {epoch}/{num_epochs}", leave=False, mininterval=5.0):
+            cat = {f: t.to(device) for f, t in cat.items()}
+            numeric = numeric.to(device)
+            numeric_mask = numeric_mask.to(device)
+
             optimizer.zero_grad()
             _, cat_logits, numeric_recon = model(cat, numeric)
 
@@ -156,8 +166,13 @@ def main():
     parser.add_argument("--output", help=f"모델 아티팩트 저장 디렉터리 (생략 시 기본 경로: {config.ARTIFACT_DIR})")
     parser.add_argument(
         "--config",
-        help="dataset_path/output_model_path/num_epochs/batch_size/learning_rate를 담은 JSON 설정 파일 "
-        "(config/train_config.example.json 참고). --input/--output을 같이 주면 그 값이 우선한다.",
+        help="dataset_path/output_model_path/num_epochs/batch_size/learning_rate/device를 담은 JSON 설정 파일 "
+        "(config/train_config.example.json 참고). --input/--output/--device를 같이 주면 그 값이 우선한다.",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cpu", "cuda"],
+        help="학습에 쓸 디바이스 (기본값: auto, cuda 사용 가능하면 cuda, 아니면 cpu)",
     )
     args = parser.parse_args()
 
@@ -167,10 +182,11 @@ def main():
     num_epochs = cfg.get("num_epochs", config.NUM_EPOCHS)
     batch_size = cfg.get("batch_size", config.BATCH_SIZE)
     lr = cfg.get("learning_rate", config.LEARNING_RATE)
+    device = args.device or cfg.get("device", "auto")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     print("=== user_profile 임베딩(Autoencoder) 학습 시작 ===")
-    train(num_epochs=num_epochs, batch_size=batch_size, lr=lr, input_path=input_path, artifact_dir=artifact_dir)
+    train(num_epochs=num_epochs, batch_size=batch_size, lr=lr, input_path=input_path, artifact_dir=artifact_dir, device=device)
     print("=== 완료 ===")
 
 

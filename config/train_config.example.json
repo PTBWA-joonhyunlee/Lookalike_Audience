@@ -4,5 +4,6 @@
   "output_model_path": "data/models/user_profile",
   "num_epochs": 30,
   "batch_size": 256,
-  "learning_rate": 0.001
+  "learning_rate": 0.001,
+  "device": "auto"
 }

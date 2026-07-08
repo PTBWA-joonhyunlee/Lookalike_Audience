@@ -8,7 +8,7 @@ from typing import Any, Dict, Union
 
 from .config_file import load_json_config
 
-KNOWN_KEYS = {"dataset_path", "output_model_path", "num_epochs", "batch_size", "learning_rate"}
+KNOWN_KEYS = {"dataset_path", "output_model_path", "num_epochs", "batch_size", "learning_rate", "device"}
 
 
 def load_train_config(path: Union[str, Path]) -> Dict[str, Any]:

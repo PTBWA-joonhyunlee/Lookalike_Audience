@@ -1,0 +1,9 @@
+# GPU (NVIDIA CUDA) environment. Install: pip install -r requirements-gpu.txt
+#
+# Pick the cuXXX suffix below to match "CUDA Version" from `nvidia-smi` (a newer
+# driver can usually run an older cuXXX build too - CUDA is backward compatible).
+# cu132 is what this project's dev machine uses as of 2026-07 (driver 595.79,
+# CUDA 13.2, RTX A2000). Check https://download.pytorch.org/whl/ for other tags.
+--extra-index-url https://download.pytorch.org/whl/cu132
+-r requirements.txt
+torch>=2.2.0

@@ -25,7 +25,8 @@ docs/         테이블 스키마 레퍼런스 + 모델 아키텍처 스펙
 
 ```
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements-cpu.txt   # GPU 없는 환경
+.venv\Scripts\python.exe -m pip install -r requirements-gpu.txt   # GPU(NVIDIA CUDA) 환경 — cuXXX 태그는 파일 안 주석 참고
 ```
 
 모든 실행은 저장소 루트에서 `-m` 모듈 실행으로 한다(`train/`, `inference/` 등이 `embedding/`을
@@ -59,6 +60,9 @@ python -m venv .venv
 .venv\Scripts\python.exe -m train.user_profile   --input data/raw/02_user_profile.csv      --output data/models/user_profile_addi
 .venv\Scripts\python.exe -m train.media_sequence --input data/raw/01_top500_media_visit.csv --output data/models/media_sequence_addi_genre
 ```
+
+GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 사용)/`--device cuda`/`--device cpu`로
+지정한다(`--config`로 주는 JSON에도 `"device"` 키로 넣을 수 있음).
 
 모델 구조/필드별 처리 방식은 [`docs/model_architecture.md`](docs/model_architecture.md) 참고.
 

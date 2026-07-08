@@ -27,6 +27,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
+from embedding.common.device import resolve_device
 from embedding.common.io import latest_file
 from embedding.common.train_config import load_train_config
 from embedding.common.vocab import CategoryVocab
@@ -95,7 +96,12 @@ def train(
     lr: float = config.LEARNING_RATE,
     input_path: Optional[str] = None,
     artifact_dir: Optional[str] = None,
+    device: str = "auto",
 ) -> None:
+    device = resolve_device(device)
+    logger.info("device=%s", device)
+    print(f"[INFO] device={device}")
+
     df = _load_source(input_path)
     vocab = _fit_vocab(df)
     side_vocabs = SideFeatureVocabs.fit(df)
@@ -143,7 +149,7 @@ def train(
         genre_vocab_size=len(side_vocabs.genre),
         ad_type_vocab_size=len(side_vocabs.ad_type),
         connection_type_vocab_size=len(side_vocabs.connection_type),
-    )
+    ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
@@ -155,6 +161,12 @@ def train(
         for _, input_ids, target_ids, _lengths, genre_ids, ad_type_ids, connection_type_ids in tqdm(
             loader, desc=f"epoch {epoch}/{num_epochs}", leave=False, mininterval=5.0
         ):
+            input_ids = input_ids.to(device)
+            target_ids = target_ids.to(device)
+            genre_ids = genre_ids.to(device)
+            ad_type_ids = ad_type_ids.to(device)
+            connection_type_ids = connection_type_ids.to(device)
+
             optimizer.zero_grad()
             logits = model(input_ids, genre_ids, ad_type_ids, connection_type_ids)  # (B, L, V)
             loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
@@ -179,8 +191,13 @@ def main():
     parser.add_argument("--output", help=f"모델 아티팩트 저장 디렉터리 (생략 시 기본 경로: {config.ARTIFACT_DIR})")
     parser.add_argument(
         "--config",
-        help="dataset_path/output_model_path/num_epochs/batch_size/learning_rate를 담은 JSON 설정 파일 "
-        "(config/train_config.example.json 참고). --input/--output을 같이 주면 그 값이 우선한다.",
+        help="dataset_path/output_model_path/num_epochs/batch_size/learning_rate/device를 담은 JSON 설정 파일 "
+        "(config/train_config.example.json 참고). --input/--output/--device를 같이 주면 그 값이 우선한다.",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cpu", "cuda"],
+        help="학습에 쓸 디바이스 (기본값: auto, cuda 사용 가능하면 cuda, 아니면 cpu)",
     )
     args = parser.parse_args()
 
@@ -190,10 +207,11 @@ def main():
     num_epochs = cfg.get("num_epochs", config.NUM_EPOCHS)
     batch_size = cfg.get("batch_size", config.BATCH_SIZE)
     lr = cfg.get("learning_rate", config.LEARNING_RATE)
+    device = args.device or cfg.get("device", "auto")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     print("=== media_sequence 임베딩(SASRec) 학습 시작 ===")
-    train(num_epochs=num_epochs, batch_size=batch_size, lr=lr, input_path=input_path, artifact_dir=artifact_dir)
+    train(num_epochs=num_epochs, batch_size=batch_size, lr=lr, input_path=input_path, artifact_dir=artifact_dir, device=device)
     print("=== 완료 ===")
 
 
