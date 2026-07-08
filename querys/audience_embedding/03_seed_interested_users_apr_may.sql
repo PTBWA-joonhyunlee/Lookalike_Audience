@@ -1,15 +1,17 @@
 -- ============================================================
 -- 03_seed_interested_users_apr_may.sql
 -- 목적   : 임베딩 유사도 스코어링의 "시드(seed/reference)" 집합 — 2026-04~05월에 실제로
---          관심을 보인(T2 이상) 유저 리스트. querys/audience_list_extraction/J2와 로직은
---          동일하지만 두 가지가 다르다:
+--          관심을 보인(T2 이상) 유저 리스트. 폐기된 규칙 기반 티어 추출 트랙(J1/J2, 히스토리는
+--          docs/_archive/audience_list_project_full.md 참고)과 티어 판정 로직은 동일하지만
+--          두 가지가 다르다:
 --            1) cmp_no 필터 없음 — 특정 캠페인이 아니라 전체 캠페인 풀링 (§7 파일럿 결정,
 --               docs/audience_embedding_plan.md §5/§7-3 참고. 특정 캠페인으로 좁힐 실제
---               니즈가 생기면 J2처럼 cmp_no 필터를 추가하면 됨)
+--               니즈가 생기면 cmp_no 필터를 추가하면 됨)
 --            2) 기간 2026-04-01~05-31 (학습 기간과 동일 — docs/audience_embedding_plan.md §7-1)
 -- 출력   : req_user_id 그레인 (임베딩이 req_user_id로 키잉되므로). device_ifa는 참고용으로 같이 둠.
--- 다음 단계: 이 결과의 req_user_id들을 inference로 뽑은 04-05월 임베딩과 매칭해 centroid를
---          계산 → 06월 신규 유저(04_05 참고)와의 코사인 거리 스코어링에 사용 (§4-2).
+-- 다음 단계: 이 결과의 req_user_id들을 inference로 뽑은 04-05월 임베딩과 매칭해
+--          scoring.train_supervised_lookalike로 분류기를 학습하고, 06월 신규 유저(04_05 참고)를
+--          scoring.infer_supervised_lookalike로 스코어링한다(README.md §4 참고).
 -- ============================================================
 
 WITH bid_exposure AS (

@@ -51,8 +51,8 @@ python -m venv .venv
 파일 주석 참고). **실제 서비스용 후보 리스트를 뽑을 땐 이 조건을 지우고 재실행**해야 한다
 (모델 재학습은 유지해도 됨 — 학습은 표본이어도 스코어링 대상은 전수여야 함).
 
-`querys/audience_list_extraction/`(J1/J2, 규칙 기반 T1~T4 티어)와
-`querys/athena_validation_queries/`(데이터 정합성 검증)는 별도 트랙 — §6 참고.
+`querys/athena_validation_queries/`(데이터 정합성 검증)는 별도 트랙, 이 파이프라인 실행에는
+필요 없다.
 
 ## 2. 학습 (최초 1회, 이후 새 기간 데이터가 쌓이면 재실행)
 
@@ -121,13 +121,6 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 옵션을 CLI 대신 JSON으로 관리하려면 `--config config/<이름>.json`을 쓴다
 (`config/backtest.example.json` 참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
 
-## 6. 규칙 기반 티어 추출 (J1/J2 — postback 있는 과거 캠페인 전용, 별도 트랙)
-
-임베딩 없이 bid+postback 로그만으로 "이미 반응한 유저"를 T1(노출)~T4(완료) 티어로 뽑는
-쿼리. `querys/audience_list_extraction/J1_audience_tier_full.sql`(전체 분포 확인용),
-`J2_interested_users_final.sql`(T2 이상 최종 리스트) — 파일 상단 `cmp_no` 값만 바꿔서 재사용.
-파일럿 산출물(`cmp_no=10115`): `data/audience_list_extraction/`.
-
 ## 산출물 현황 요약
 
 | 산출물 | 위치 | 상태 |
@@ -136,7 +129,6 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 | media_sequence 임베딩 모델 | `data/models/media_sequence_addi_genre/` | 4~5월 10만 유저(로컬 추가 샘플, 파일럿용), 5 epoch — 프로덕션 전환 시 전체/30epoch 재학습 권장 |
 | 지도학습 fusion 분류기 | `data/models/fusion_classifier_addi/` | 시드 라벨 기반, 20 epoch |
 | 6월 신규 유저 스코어 | `data/embeddings/supervised_lookalike_scored_jun.csv` | 25,449명 |
-| J1/J2 규칙 기반 리스트 | `data/audience_list_extraction/` | cmp_no=10115 파일럿 |
 
 ## 알려진 이슈 / 주의사항
 

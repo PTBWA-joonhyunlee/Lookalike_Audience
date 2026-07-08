@@ -9,14 +9,10 @@ Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference
 ## 프로젝트 목표
 
 특정 광고(cmp_no)에 관심 있는 사용자(디바이스) 리스트를 뽑고, 나아가 아직 postback(전환)이
-없는 신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를 임베딩 유사도로 찾아내는 것.
-
-- **규칙 기반 티어 추출** (완료): `querys/audience_list_extraction/` — bid/postback 로그로
-  T1(노출)~T4(완료) 티어를 매기고 관심 유저 리스트를 뽑는다. 설계 결정은
-  `docs/audience_list_project.md` 참고.
-- **임베딩 기반 유사 오디언스 탐색** (파일럿 완료, 프로덕션 전환 전): `querys/audience_embedding/`
-  01~06.sql로 데이터를 만들고, `train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/
-  스코어링/백테스트한다. 모델 구조는 `docs/model_architecture.md`, 실행 커맨드는 `README.md` 참고.
+없는 신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를 임베딩 유사도로 찾아내는 것
+(파일럿 완료, 프로덕션 전환 전). `querys/audience_embedding/` 01~06.sql로 데이터를 만들고,
+`train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/스코어링/백테스트한다. 모델 구조는
+`docs/model_architecture.md`, 실행 커맨드는 `README.md` 참고.
 
 ## 데이터를 얻는 방법 (이 repo에는 Athena 접근 권한이 없음)
 
@@ -40,7 +36,7 @@ Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference
   서로 동일하게 맞춘다. 임베딩 파이프라인은 학습=2026-04~05, 스코어링 대상=2026-06.
 - **컴플라이언스 필터 (오디언스 추출/임베딩 공통 필수)**: `req_ext_allow_user_data_collection = '1'`
   인 로그만 포함(NULL/미채움은 보수적으로 제외 — 사용자 확정 정책), `device_lmt = '1'`(옵트아웃)
-  디바이스는 제외. 근거는 `docs/audience_list_project.md` 참고.
+  디바이스는 제외. 근거는 `docs/_archive/audience_list_project_full.md` 참고.
 - **식별자**: 광고 식별자는 `cmp_no`(+`ag_no`)를 쓴다 — `addi_advertisement.adspid`와는
   매핑이 없음(전수 조사로 확인됨). 이 때문에 `addi_business`(광고주 정보)도 유저/캠페인
   어느 쪽에도 못 붙는다(`README.md` "알려진 이슈" 참고). 유저 식별자는
@@ -65,5 +61,6 @@ Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference
 - `README.md` — 전체 파이프라인 실행 커맨드 + 산출물 위치 (가장 먼저 볼 문서)
 - `docs/data_schema.md` — 원본 4개 테이블 스키마
 - `docs/model_architecture.md` — 임베딩 모델 구조/하이퍼파라미터, fusion/스코어링 방식 비교
-- `docs/audience_list_project.md` — 규칙 기반 T1~T4 관심 유저 리스트 설계/파일럿 결과
-- `docs/_archive/` — 위 문서들의 상세 조사 과정/의사결정 히스토리 원본 (참고용, 갱신 안 함)
+- `docs/_archive/` — 위 문서들의 상세 조사 과정/의사결정 히스토리 원본 (참고용, 갱신 안 함).
+  규칙 기반 T1~T4 관심 유저 리스트(J1/J2, 폐기된 별도 트랙)의 설계/파일럿 결과도 여기
+  `audience_list_project_full.md`에 남아있다.
