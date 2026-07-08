@@ -21,8 +21,8 @@ import pandas as pd
 import torch
 
 from scoring.fusion_classifier import FusionClassifier, load_artifacts
+from scoring.fused_embeddings import ID_COL, load_fused_embeddings
 from scoring.infer_config import load_infer_config
-from scoring.lookalike import ID_COL, load_fused_embeddings
 
 
 def score(model: FusionClassifier, target_df: pd.DataFrame, id_col: str = ID_COL) -> pd.DataFrame:

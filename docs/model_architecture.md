@@ -62,23 +62,14 @@ media(장르 대표값), content_genre(전체 장르, 보조), ad_type(보조), 
 시퀀스 길이 2 미만인 유저는 학습에서 제외되지만(다음 아이템을 만들 수 없어서), 추론
 (`inference/media_sequence.py`)에서는 전부 포함해서 임베딩을 뽑는다.
 
-## 3. Fusion + 스코어링 (`scoring/`)
+## 3. Fusion + 스코어링 (`scoring/`, 지도학습 fusion 분류기)
 
-두 임베딩(각 64차원)을 `req_user_id`로 concat → 128차원. 그 위에서 "시드(과거 관심 유저)와
-얼마나 비슷한가"를 스코어링하는 방식이 2가지 있다 — 자세한 비교는 [`README.md`](../README.md) §4.
-
-### 3-1. centroid 코사인 유사도 (`scoring/lookalike.py`)
-
-시드 유저들의 fused 벡터를 L2-정규화 후 평균낸 centroid 1개와, 대상 유저 벡터의 코사인
-유사도. 학습 불필요, 계산 O(N). **한계**: 6월 백테스트에서 최하위 10%만 구분하고 나머지
-90%는 순위를 못 매김 — addi CTV의 낮은 카디널리티(1절 참고) 때문에 `user_profile` 임베딩이
-몇 가지 "전형적 프로필"로 뭉치는 영향으로 추정.
-
-### 3-2. 지도학습 fusion 분류기 (`scoring/train_supervised_lookalike.py` + `scoring/infer_supervised_lookalike.py`, 권장)
-
-fused 128차원 벡터 위에 얕은 MLP를 얹어 "시드=1 / 비시드=0" 라벨로 직접 지도학습. 분류기
-학습(train)과 저장된 분류기로 신규 유저를 스코어링(infer)하는 스크립트가 분리돼 있다 —
-`scoring/fusion_classifier.py`(모델 정의 + 아티팩트 저장/로드)를 공유한다.
+두 임베딩(각 64차원)을 `req_user_id`로 concat → 128차원(`scoring/fused_embeddings.py`). 그
+위에 얕은 MLP를 얹어 "시드(과거 관심 유저)=1 / 비시드=0" 라벨로 직접 지도학습한다. 분류기
+학습(`scoring/train_supervised_lookalike.py`)과 저장된 분류기로 신규 유저를 스코어링하는
+스크립트(`scoring/infer_supervised_lookalike.py`)가 분리돼 있다 —
+`scoring/fusion_classifier.py`(모델 정의 + 아티팩트 저장/로드)를 공유한다. 실행 커맨드는
+[`README.md`](../README.md) §4 참고.
 
 ```
 Linear(128→64) → ReLU → Dropout(0.2) → Linear(64→1) → sigmoid = 스코어
@@ -89,7 +80,8 @@ Linear(128→64) → ReLU → Dropout(0.2) → Linear(64→1) → sigmoid = 스�
 
 **성능(2026-07-07, 6월 신규 유저 25,449명 백테스트)**: pool(4~5월) 내부 validation AUC
 0.86(같은 분포라 낙관적), 6월 실제 postback 기준 held-out AUC **0.61**, 최상위 10% decile
-lift **2.07x**(하위 80%는 아직 세밀한 순서 없음). centroid 대비 뚜렷한 개선.
+lift **2.07x**(하위 80%는 아직 세밀한 순서 없음). (시드 centroid 코사인 유사도 baseline은
+최하위 10%만 구분하고 나머지는 순위를 못 매겨 폐기 — 히스토리는 `docs/_archive/` 참고.)
 
 ## 4. 아직 없는 것 / 다음 시도 후보
 

@@ -12,7 +12,7 @@ querys/       Athena SQL — 이 환경엔 Athena 접근 권한이 없어 콘솔
 embedding/    모델 구조/데이터셋/전처리 정의 (user_profile, media_sequence) — train/inference가 공유
 train/        학습 실행 진입점 (아티팩트 저장까지만, 임베딩은 안 뽑음)
 inference/    학습된 모델로 재학습 없이 임베딩 추출
-scoring/      fusion + lookalike 스코어링 (centroid 방식 / 지도학습 분류기 방식 — 후자는 train·infer 분리)
+scoring/      fusion + lookalike 스코어링 (지도학습 분류기, train·infer 분리)
 evaluation/   임베딩 거리 확인(distance.py), 스코어 대비 실제 결과 백테스트(backtest.py)
 data/         쿼리 결과 CSV / 임베딩 / 모델 아티팩트 (git 추적 안 됨, .gitignore)
 docs/         테이블 스키마 레퍼런스 + 모델 아키텍처 스펙
@@ -75,27 +75,11 @@ GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 �
 .venv\Scripts\python.exe -m inference.media_sequence --input data/raw/04_new_users_top500_media_visit_jun.csv     --model-dir data/models/media_sequence_addi_genre --output data/embeddings/media_sequence_jun_new.csv
 ```
 
-## 4. 스코어링
-
-두 방식이 있다. **지도학습 분류기를 기본으로 쓴다** — centroid 방식은 백테스트에서 상위
-90% 구간의 순위를 전혀 못 갈랐다(§4-2 결과 참고).
-
-### 4-1. centroid 코사인 유사도 (baseline, 참고용)
-
-```
-.venv\Scripts\python.exe -m scoring.lookalike \
-  --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
-  --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
-  --seed-ids data/raw/03_seed_interested_users_apr_may.csv \
-  --target-profile-emb data/embeddings/user_profile_jun_new.csv \
-  --target-media-emb data/embeddings/media_sequence_jun_new.csv \
-  --output data/embeddings/lookalike_scored_jun.csv
-```
-
-### 4-2. 지도학습 분류기 (권장)
+## 4. 스코어링 (지도학습 분류기)
 
 train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 재학습 없이 스코어링)로 나뉜다
-— `embedding/` 모델들의 train→inference 구조와 동일.
+— `embedding/` 모델들의 train→inference 구조와 동일. (centroid 코사인 유사도 baseline은
+백테스트에서 상위 90% 구간의 순위를 전혀 못 갈라 폐기 — 히스토리는 `docs/_archive/` 참고.)
 
 ```
 .venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
@@ -118,12 +102,8 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 (`config/train_supervised_lookalike.example.json`, `config/infer_supervised_lookalike.example.json`
 참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
 
-**결과 비교(2026-07-07 파일럿, 6월 신규 유저 25,449명 기준)**:
-
-| 방식 | 6월 held-out 성능 | 특징 |
-|---|---|---|
-| centroid (4-1) | 최하위 10%만 구분(lift 0.73x), 나머지 90%는 순위 없음 | 계산 단순, 추가 학습 없음 |
-| 지도학습 분류기 (4-2) | AUC 0.61, 최상위 10% lift **2.07x** | postback 라벨로 얕은 분류기(128→64→1) 추가 학습 필요 |
+**성능(2026-07-07 파일럿, 6월 신규 유저 25,449명 기준)**: AUC 0.61, 최상위 10% lift **2.07x**
+(postback 라벨로 얕은 분류기(128→64→1) 추가 학습 필요).
 
 ## 5. 백테스트 (실제 postback이 쌓인 기간에만 가능)
 

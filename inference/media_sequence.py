@@ -75,8 +75,8 @@ def encode_dataset(model: SASRec, dataset: MediaSequenceInferenceDataset, batch_
 def encode(df: pd.DataFrame, artifact_dir: Optional[Union[str, os.PathLike]] = None) -> pd.DataFrame:
     """artifact_dir을 지정하면 그 경로의 학습된 모델로, 생략하면 기본/pretrained 모델로 인코딩한다.
     이벤트가 config.MIN_SEQ_LEN개 미만인 유저는 학습 때와 동일한 기준으로 제외한다 — 학습 신호가
-    거의 없던 유저의 임베딩은 신뢰하기 어려워, lookalike 스코어링(scoring/lookalike.py 등)에
-    섞이지 않도록 여기서 걸러낸다."""
+    거의 없던 유저의 임베딩은 신뢰하기 어려워, lookalike 스코어링(scoring/infer_supervised_lookalike.py
+    등)에 섞이지 않도록 여기서 걸러낸다."""
     counts = df[config.ID_COL].value_counts()
     keep_ids = counts[counts >= config.MIN_SEQ_LEN].index
     n_dropped = len(counts) - len(keep_ids)

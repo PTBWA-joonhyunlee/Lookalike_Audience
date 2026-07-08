@@ -1,11 +1,11 @@
 # scoring/train_supervised_lookalike.py
 #
-# scoring/lookalike.py(시드 centroid 코사인 유사도)의 지도학습 버전. 첫 백테스트(addi_data_
-# embedding docs/audience_embedding_plan.md §7-6)에서 unsupervised centroid가 최하위 10%는
-# 잘 걸러내지만 나머지 90% 안에서는 점수가 순위를 못 매기는 문제가 확인됐다. 시드(과거 관심
-# 유저) 여부를 1/0 라벨로 삼아 128차원 fused 임베딩(user_profile+media_sequence concat) 위에
-# 작은 분류기를 지도학습시켜, "이 유저 프로필이 시드와 얼마나 비슷한 패턴인가"를 직접 예측하게
-# 한다 — centroid까지의 단일 방향 거리보다 표현력이 높다(비선형 결합 가능).
+# 첫 백테스트(addi_data_embedding docs/audience_embedding_plan.md §7-6)에서 시드 centroid
+# 코사인 유사도(unsupervised) 방식이 최하위 10%는 잘 걸러내지만 나머지 90% 안에서는 점수가
+# 순위를 못 매기는 문제가 확인됐다. 시드(과거 관심 유저) 여부를 1/0 라벨로 삼아 128차원 fused
+# 임베딩(user_profile+media_sequence concat) 위에 작은 분류기를 지도학습시켜, "이 유저 프로필이
+# 시드와 얼마나 비슷한 패턴인가"를 직접 예측하게 한다 — centroid까지의 단일 방향 거리보다
+# 표현력이 높다(비선형 결합 가능).
 #
 # 임베딩 자체(user_profile/media_sequence)는 재학습하지 않는다 — 그 위에 얹는 얕은 분류기만
 # 학습해서 아티팩트(model.pt, meta.json)로 저장한다. 학습된 분류기로 신규 유저를 스코어링하려면
@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 
 from scoring.fusion_classifier import FusionClassifier, save_artifacts
-from scoring.lookalike import ID_COL, load_fused_embeddings
+from scoring.fused_embeddings import ID_COL, load_fused_embeddings
 from scoring.train_config import load_train_config
 
 
