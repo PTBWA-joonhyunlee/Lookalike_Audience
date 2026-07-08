@@ -21,27 +21,20 @@ EMBEDDINGS_DIR = PROJECT_ROOT / "data" / "embeddings"
 ID_COL = "req_user_id"
 
 # 범주형 필드: min_freq 미만이거나 max_size를 넘는 저빈도 값은 <UNK>로 묶인다.
-# carrier/device_make/device_model은 카디널리티가 높아 cutoff를 더 빡빡하게 잡는다.
+# 컬럼 축소(2026-07-08): device_os/device_type/device_lmt/country/language/carrier/
+# device_make/device_model은 addi CTV 인벤토리 실측 결과 전부 상수이거나 거의 전부 NULL이라
+# (예: device_make=100% "Android", carrier=99.99% NULL) 학습 피처에서 뺐다. carrier 대신
+# app_bundle(통신사 IPTV 앱, SKB/KT/LGU+ 3종 — 늘 채워져 있고 유저별로 기간 내내 고정값)을
+# 넣었다. 자세한 사유는 02_user_profile.sql 주석 및 docs/model_architecture.md 참고.
 CATEGORICAL_FIELDS = {
-    "device_os":         {"min_freq": 1,  "max_size": None, "embed_dim": 8,  "preprocess": identity},
-    "device_os_version": {"min_freq": 1,  "max_size": 100,  "embed_dim": 8,  "preprocess": major_version},
-    "device_type":       {"min_freq": 1,  "max_size": None, "embed_dim": 8,  "preprocess": identity},
-    "device_lmt":        {"min_freq": 1,  "max_size": None, "embed_dim": 4,  "preprocess": identity},
-    "country":           {"min_freq": 1,  "max_size": 300,  "embed_dim": 8,  "preprocess": identity},
-    "language":          {"min_freq": 1,  "max_size": 200,  "embed_dim": 8,  "preprocess": identity},
-    "region":            {"min_freq": 5,  "max_size": 2000, "embed_dim": 16, "preprocess": identity},
-    "carrier":           {"min_freq": 20, "max_size": 5000, "embed_dim": 16, "preprocess": identity},
-    "device_make":       {"min_freq": 20, "max_size": 2000, "embed_dim": 16, "preprocess": identity},
-    "device_model":      {"min_freq": 10, "max_size": 5000, "embed_dim": 24, "preprocess": identity},
+    "device_os_version": {"min_freq": 1, "max_size": 100,  "embed_dim": 8,  "preprocess": major_version},
+    "region":            {"min_freq": 5, "max_size": 2000, "embed_dim": 16, "preprocess": identity},
+    "app_bundle":        {"min_freq": 1, "max_size": 10,   "embed_dim": 4,  "preprocess": identity},
 }
 
-# 수치형 필드: log1p 적용 여부 (표준화는 항상 적용). device_lmt는 사실상 플래그라
-# 위 CATEGORICAL_FIELDS 쪽에 넣었다.
-NUMERIC_FIELDS = {
-    "device_w":       {"log1p": True},
-    "device_h":       {"log1p": True},
-    "device_pxratio": {"log1p": False},
-}
+# 수치형 필드: device_w/device_h(상수)와 device_pxratio(전부 NULL)를 빼서 현재 없음
+# (UserProfileAutoencoder/UserProfileDataset은 NUMERIC_FIELDS가 비어 있어도 그대로 동작한다).
+NUMERIC_FIELDS = {}
 
 HIDDEN_DIM = 128
 EMBED_DIM = 64

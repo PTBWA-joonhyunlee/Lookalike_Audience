@@ -17,21 +17,21 @@ z → Linear(128) → ReLU → 필드별 Linear(복원) → cross-entropy(범주
 
 | 필드 | 종류 | 임베딩 차원 | 비고 |
 |---|---|---|---|
-| `device_os` | 범주형 | 8 | |
 | `device_os_version` | 범주형 | 8 | 메이저 버전만 사용("14.2.1"→"14") |
-| `device_type` | 범주형 | 8 | 코드 1~7 |
-| `device_lmt` | 범주형 | 4 | 사실상 플래그(0/1/결측) |
-| `country` | 범주형 | 8 | ISO-3166-1 alpha-3 |
-| `language` | 범주형 | 8 | |
 | `region` | 범주형 | 16 | ISO-3166-2, min_freq=5 |
-| `carrier` | 범주형 | 16 | min_freq=20 (addi CTV는 카디널리티 매우 낮음) |
-| `device_make` | 범주형 | 16 | min_freq=20 |
-| `device_model` | 범주형 | 24 | 가장 카디널리티 높음, min_freq=10 |
-| `device_w`, `device_h` | 수치형 | — | log1p + 표준화 |
-| `device_pxratio` | 수치형 | — | **addi_bid_log_flatten엔 해당 컬럼이 없어 항상 NULL → 사실상 죽은 피처**(마스킹 처리) |
+| `app_bundle` | 범주형 | 4 | 통신사 IPTV 앱 3종(SKB/KT/LGU+). 유저별로 기간 내내 고정값(멀티 유저 0명 확인) |
 
 미사용(화이트리스트에 없음): `req_user_id`, `device_ifa`, `update_dt`.
 하이퍼파라미터: hidden=128, embed_dim=64, batch=256, epoch=30, lr=1e-3(Adam).
+
+**컬럼 축소(2026-07-08)**: 원래 `device_os`/`device_type`/`device_lmt`/`country`/`language`/
+`carrier`/`device_make`/`device_model`/`device_w`/`device_h`/`device_pxratio`까지 11개
+필드를 더 실었는데, addi CTV 인벤토리 실측 결과 전부 상수이거나 거의 전부 NULL이었다
+(`device_os`=100% "android", `device_type`=100% "3", `device_make`=100% "Android",
+`device_model`=100% "generic", `carrier`=99.99% NULL, `device_lmt`=100% NULL,
+`device_pxratio`=100% NULL, `device_w`/`device_h`=상수 1920/1080, `country`=100% "KOR",
+`language`=99.998% "ko"). 학습 피처로서 정보량이 없어 전부 빼고, `carrier`가 늘 NULL이라
+못 쓰는 통신사 식별 신호를 `app_bundle`로 대체했다. `NUMERIC_FIELDS`는 현재 빈 딕셔너리.
 
 ## 2. `media_sequence` — SASRec (`embedding/media_sequence/`)
 

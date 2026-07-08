@@ -6,6 +6,8 @@
 --          기간과 신규 유저 필터만 다르다.
 -- 샘플링 : 04_new_users_top500_media_visit_jun.sql과 반드시 동일한 유저 단위 5% 샘플링 조건을
 --          쓴다(같은 유저 집합을 가리켜야 함). 파일럿 단계용 — 실제 후보 리스트 산출 시 제거.
+-- 컬럼 축소(2026-07-08): 02_user_profile.sql과 동일 이유로 컬럼을 줄였다 — 자세한 사유는
+--          02_user_profile.sql 주석 참고. 02와 컬럼 계약은 계속 동일하게 맞춘다.
 -- ============================================================
 
 WITH prior_users AS (
@@ -18,19 +20,9 @@ latest_log AS (
     SELECT
         b.req_user_id,
         b.device_ifa,
-        b.device_os,
         b.device_osv AS device_os_version,
-        b.device_devicetype AS device_type,
         b.device_geo_region AS region,
-        b.device_geo_country AS country,
-        NULLIF(CAST(b.app_content_language AS VARCHAR), '') AS language,
-        b.device_carrier AS carrier,
-        b.device_make,
-        b.device_model,
-        TRY_CAST(b.device_w AS INT) AS device_w,
-        TRY_CAST(b.device_h AS INT) AS device_h,
-        CAST(NULL AS DOUBLE) AS device_pxratio,  -- addi_bid_log_flatten에는 없는 컬럼 (02와 동일 사유)
-        TRY_CAST(b.device_lmt AS INT) AS device_lmt,
+        b.app_bundle,
         b.created_at,
         ROW_NUMBER() OVER (
             PARTITION BY b.req_user_id
@@ -48,19 +40,9 @@ latest_log AS (
 SELECT
     req_user_id,
     device_ifa,
-    device_os,
     device_os_version,
-    device_type,
     region,
-    country,
-    language,
-    carrier,
-    device_make,
-    device_model,
-    device_w,
-    device_h,
-    device_pxratio,
-    device_lmt,
+    app_bundle,
     current_date AS update_dt
 FROM latest_log
 WHERE rn = 1;
