@@ -3,15 +3,16 @@
 `addi_data_embedding` 저장소에서 작업할 때 참고할 프로젝트 컨텍스트. SQL/문서 저장소였던 이
 repo와 임베딩 모델 코드 저장소(`user-to-ad-encoder`)를 2026-07-08에 하나로 합쳤다 — 이제
 Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference/`, `scoring/`,
-`evaluation/`)가 같은 저장소에 있다. 실행 방법 전체는 [`README.md`](README.md) 참고, 이
-문서는 작업 시 지켜야 할 규칙 위주.
+`evaluation/`, `pipeline/`)가 같은 저장소에 있다. 실행 방법 전체는 [`README.md`](README.md)
+참고, 이 문서는 작업 시 지켜야 할 규칙 위주.
 
 ## 프로젝트 목표
 
 특정 광고(cmp_no)에 관심 있는 사용자(디바이스) 리스트를 뽑고, 나아가 아직 postback(전환)이
 없는 신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를 임베딩 유사도로 찾아내는 것
 (파일럿 완료, 프로덕션 전환 전). `querys/audience_embedding/` 01~06.sql로 데이터를 만들고,
-`train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/스코어링/백테스트한다. 모델 구조는
+`train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/스코어링/백테스트한다
+(`pipeline.run_all`로 한번에 실행도 가능, `README.md` §2-0). 모델 구조는
 `docs/model_architecture.md`, 실행 커맨드는 `README.md` 참고.
 
 ## 데이터를 얻는 방법 (이 repo에는 Athena 접근 권한이 없음)

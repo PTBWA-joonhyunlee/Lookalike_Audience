@@ -14,6 +14,7 @@ train/        학습 실행 진입점 (아티팩트 저장까지만, 임베딩�
 inference/    학습된 모델로 재학습 없이 임베딩 추출
 scoring/      fusion + lookalike 스코어링 (지도학습 분류기, train·infer 분리)
 evaluation/   임베딩 거리 확인(distance.py), 스코어 대비 실제 결과 백테스트(backtest.py)
+pipeline/     학습→추론→스코어링(→백테스트)을 config 하나로 한번에 실행 (아래 §2-0)
 data/         쿼리 결과 CSV / 임베딩 / 모델 아티팩트 (git 추적 안 됨, .gitignore)
 docs/         테이블 스키마 레퍼런스 + 모델 아키텍처 스펙
 .venv/        Python 3.14 가상환경 (Windows, git 추적 안 됨)
@@ -54,7 +55,33 @@ python -m venv .venv
 `querys/athena_validation_queries/`(데이터 정합성 검증)는 별도 트랙, 이 파이프라인 실행에는
 필요 없다.
 
-## 2. 학습 (최초 1회, 이후 새 기간 데이터가 쌓이면 재실행)
+## 2. 파이프라인 실행 (학습 → 추론 → 스코어링 → 백테스트)
+
+### 2-0. 한번에 실행 (권장)
+
+`querys/audience_embedding/01~05.sql` 결과 CSV를 `data/raw/`에 올려둔 상태라면(06은 아래
+2-4처럼 백테스트를 켤 때만 필요), 학습→추론→스코어링(→백테스트)을 한 커맨드로 실행한다.
+개별 단계 함수를 그대로 호출할 뿐이라 산출물 위치는 아래 2-1~2-4의 수동 실행과 동일하다.
+
+```
+cp config/pipeline.example.json config/pipeline.json   # 값 채우기 (경로는 기본값 그대로 써도 됨)
+.venv\Scripts\python.exe -m pipeline.run_all --config config/pipeline.json
+```
+
+`config/pipeline.example.json` 참고. `backtest.enabled`를 `true`로 켜면 4단계까지, 기본(`false`)이면
+스코어링까지만 실행한다(실제 postback이 쌓인 기간에만 백테스트가 의미 있음 — 2-4 참고).
+
+새 기간 신규 유저만 다시 추론→스코어링하고 싶을 때(임베딩 모델 재학습 불필요, 2-1 참고)는
+`--skip-train`을 붙인다:
+
+```
+.venv\Scripts\python.exe -m pipeline.run_all --config config/pipeline.json --skip-train
+```
+
+아래 2-1~2-4는 이 파이프라인이 내부적으로 호출하는 개별 단계 — 한 단계만 다시 돌리거나
+디버깅할 때 직접 쓴다.
+
+### 2-1. 학습 (최초 1회, 이후 새 기간 데이터가 쌓이면 재실행)
 
 ```
 .venv\Scripts\python.exe -m train.user_profile   --input data/raw/02_user_profile.csv      --output data/models/user_profile_addi
@@ -66,7 +93,7 @@ GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 �
 
 모델 구조/필드별 처리 방식은 [`docs/model_architecture.md`](docs/model_architecture.md) 참고.
 
-## 3. 추론 (pool=4~5월 전체, target=6월 신규 유저 — 새 데이터가 생기면 매번 반복)
+### 2-2. 추론 (pool=4~5월 전체, target=6월 신규 유저 — 새 데이터가 생기면 매번 반복)
 
 ```
 .venv\Scripts\python.exe -m inference.user_profile   --input data/raw/02_user_profile.csv                    --model-dir data/models/user_profile_addi        --output data/embeddings/user_profile_apr_may.csv
@@ -75,7 +102,7 @@ GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 �
 .venv\Scripts\python.exe -m inference.media_sequence --input data/raw/04_new_users_top500_media_visit_jun.csv     --model-dir data/models/media_sequence_addi_genre --output data/embeddings/media_sequence_jun_new.csv
 ```
 
-## 4. 스코어링 (지도학습 분류기)
+### 2-3. 스코어링 (지도학습 분류기)
 
 train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 재학습 없이 스코어링)로 나뉜다
 — `embedding/` 모델들의 train→inference 구조와 동일. (centroid 코사인 유사도 baseline은
@@ -105,7 +132,7 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 **성능(2026-07-07 파일럿, 6월 신규 유저 25,449명 기준)**: AUC 0.61, 최상위 10% lift **2.07x**
 (postback 라벨로 얕은 분류기(128→64→1) 추가 학습 필요).
 
-## 5. 백테스트 (실제 postback이 쌓인 기간에만 가능)
+### 2-4. 백테스트 (실제 postback이 쌓인 기간에만 가능)
 
 ```
 .venv\Scripts\python.exe -m evaluation.backtest \

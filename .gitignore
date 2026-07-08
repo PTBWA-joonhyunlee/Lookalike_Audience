@@ -18,6 +18,7 @@ config/*
 !config/train_supervised_lookalike.example.json
 !config/infer_supervised_lookalike.example.json
 !config/backtest.example.json
+!config/pipeline.example.json
 
 # OS cruft
 .DS_Store

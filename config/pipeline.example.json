@@ -1,0 +1,39 @@
+{
+  "_comment": "cp config/pipeline.example.json config/<이름>.json 으로 복사해서 값을 채운 뒤 python -m pipeline.run_all --config config/<이름>.json 으로 학습->추론->스코어링(->백테스트)을 한번에 실행한다. querys/audience_embedding/01~05.sql(06은 backtest.enabled=true일 때만)을 Athena에서 먼저 실행해 raw 아래 경로에 CSV를 올려둬야 한다. config/pipeline.example.json을 제외한 config/ 아래 파일은 .gitignore되어 커밋되지 않는다.",
+  "device": "auto",
+  "raw": {
+    "top500_media_visit": "data/raw/01_top500_media_visit.csv",
+    "user_profile": "data/raw/02_user_profile.csv",
+    "seed_ids": "data/raw/03_seed_interested_users_apr_may.csv",
+    "new_top500_media_visit": "data/raw/04_new_users_top500_media_visit_jun.csv",
+    "new_user_profile": "data/raw/05_new_users_user_profile_jun.csv"
+  },
+  "models": {
+    "user_profile_dir": "data/models/user_profile_addi",
+    "media_sequence_dir": "data/models/media_sequence_addi_genre",
+    "fusion_classifier_dir": "data/models/fusion_classifier_addi"
+  },
+  "embeddings": {
+    "user_profile_pool": "data/embeddings/user_profile_apr_may.csv",
+    "media_sequence_pool": "data/embeddings/media_sequence_apr_may.csv",
+    "user_profile_target": "data/embeddings/user_profile_jun_new.csv",
+    "media_sequence_target": "data/embeddings/media_sequence_jun_new.csv"
+  },
+  "train": {
+    "user_profile_num_epochs": 30,
+    "media_sequence_num_epochs": 30,
+    "classifier_num_epochs": 20
+  },
+  "scoring_output": "data/embeddings/supervised_lookalike_scored_jun.csv",
+  "backtest": {
+    "enabled": false,
+    "labels": "data/raw/06_postback_max_tier_jun.csv",
+    "label_col": "max_tier",
+    "label_id_col": "ifa",
+    "label_threshold": 1,
+    "id_map": "data/raw/05_new_users_user_profile_jun.csv",
+    "map_from_col": "req_user_id",
+    "map_to_col": "device_ifa",
+    "output": "data/embeddings/supervised_lookalike_scored_jun_backtest.csv"
+  }
+}

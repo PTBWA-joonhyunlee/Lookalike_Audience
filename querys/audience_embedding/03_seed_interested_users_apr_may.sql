@@ -11,7 +11,8 @@
 -- 출력   : req_user_id 그레인 (임베딩이 req_user_id로 키잉되므로). device_ifa는 참고용으로 같이 둠.
 -- 다음 단계: 이 결과의 req_user_id들을 inference로 뽑은 04-05월 임베딩과 매칭해
 --          scoring.train_supervised_lookalike로 분류기를 학습하고, 06월 신규 유저(04_05 참고)를
---          scoring.infer_supervised_lookalike로 스코어링한다(README.md §4 참고).
+--          scoring.infer_supervised_lookalike로 스코어링한다(README.md §2-3 참고, 또는
+--          pipeline.run_all로 한번에 실행 — README.md §2-0).
 -- ============================================================
 
 WITH bid_exposure AS (

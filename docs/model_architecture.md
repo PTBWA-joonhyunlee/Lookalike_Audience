@@ -69,7 +69,7 @@ media(장르 대표값), content_genre(전체 장르, 보조), ad_type(보조), 
 학습(`scoring/train_supervised_lookalike.py`)과 저장된 분류기로 신규 유저를 스코어링하는
 스크립트(`scoring/infer_supervised_lookalike.py`)가 분리돼 있다 —
 `scoring/fusion_classifier.py`(모델 정의 + 아티팩트 저장/로드)를 공유한다. 실행 커맨드는
-[`README.md`](../README.md) §4 참고.
+[`README.md`](../README.md) §2-3 참고.
 
 ```
 Linear(128→64) → ReLU → Dropout(0.2) → Linear(64→1) → sigmoid = 스코어
