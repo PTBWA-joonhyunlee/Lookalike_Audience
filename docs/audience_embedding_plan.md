@@ -305,6 +305,49 @@ carrier 등 극소 vocab) 때문에 `user_profile` 임베딩이 몇 가지 "전�
 `user_profile`이 낮은 카디널리티 때문에 상위/중간 군집을 실질적으로 잘 구분 못 하고 있는 것으로
 보인다.
 
+### 7-7. 지도학습 fusion 분류기로 개선 (2026-07-07)
+
+§7-6에서 unsupervised centroid가 상위 90%를 못 가른 문제를 postback 라벨로 직접 지도학습해서
+개선을 시도. `user-to-ad-encoder/scoring/supervised_lookalike.py` 신규 작성 — fused
+임베딩(128차원) 위에 작은 MLP(128→64→1)를 얹어 "시드(과거 관심 유저)=1 / 비시드=0" 라벨로
+`BCEWithLogitsLoss`(클래스 불균형 보정용 `pos_weight`) 학습. 임베딩 자체는 재학습하지 않고
+그 위 얕은 분류기만 학습(20 epoch).
+
+**두 개의 AUC를 구분해서 봐야 함**:
+- pool(4~5월) 내부 validation AUC: **0.86** — 같은 기간·분포 안에서 시드/비시드를 얼마나 잘
+  가르는지. 학습 조건과 같은 분포라 다소 낙관적인 수치.
+- **6월 실제 postback으로 검증한 held-out AUC: 0.61** — 진짜 미래 데이터에 대한 일반화 성능.
+  0.5(무작위)보다 뚜렷이 높지만 pool AUC보다는 당연히 낮음(정상적인 generalization gap).
+
+**6월 백테스트 lift (십분위)**:
+| decile | 점수 구간 | 전환율 | lift |
+|---|---|---:|---:|
+| 0 (최하위 10%) | 0.00~0.08 | 3.65% | 0.71x |
+| 1~6 (중하위 60%) | 0.08~0.59 | 2.9~5.7% | 0.56~1.09x (대체로 평균 이하, 약한 U자형) |
+| 7 | 0.59~0.69 | 5.66% | 1.09x |
+| 8 | 0.69~0.78 | 9.16% | **1.77x** |
+| 9 (최상위 10%) | 0.78~0.97 | 10.73% | **2.07x** |
+
+기존 centroid 방식(전체 90%가 lift 0.9~1.2x 사이에서 순서 없이 흔들림)과 비교하면, 이번엔
+**상위 20%(decile 8~9)에서 뚜렷한 양의 lift(1.77x~2.07x)가 나온다** — 실제로 순위를 매길 수
+있게 됐다는 뜻. 다만 하위 80%는 여전히 세밀한 순서가 잘 안 잡힌다(약한 U자형 노이즈).
+
+**결론**: 상위 10~20% 후보를 뽑는 용도로는 이번 지도학습 버전이 확실히 더 낫다. "관심 예상
+신규 유저 리스트"를 만든다면 이 분류기의 상위 decile(0.78 이상, 6월 기준 2,545명)을 1차
+후보로 쓰는 걸 권장. 산출물: `data/embeddings/supervised_lookalike_scored_jun.csv`,
+분류기 가중치 `data/models/fusion_classifier_addi/model.pt`.
+
+```
+.venv\Scripts\python.exe -m scoring.supervised_lookalike \
+  --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
+  --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
+  --seed-ids data/addi_seed_interested_users_apr_may.csv \
+  --target-profile-emb data/embeddings/user_profile_jun_new.csv \
+  --target-media-emb data/embeddings/media_sequence_jun_new.csv \
+  --output data/embeddings/supervised_lookalike_scored_jun.csv \
+  --model-out data/models/fusion_classifier_addi
+```
+
 **다음에 시도해볼 것(우선순위 순)**:
 1. `media_sequence`(content_genre) 임베딩만 단독으로 스코어링해서 `user_profile`이 신호를
    흐리고 있는지 분리 검증 (`scoring/lookalike.py`는 이미 pool/target 임베딩 CSV를 각각
