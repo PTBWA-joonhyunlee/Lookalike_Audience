@@ -154,8 +154,8 @@ def train(
             total_loss += loss.item() * numeric.shape[0]
 
         avg_loss = total_loss / len(dataset)
-        logger.info("epoch %d/%d loss=%.4f", epoch, num_epochs, avg_loss)
-        print(f"[epoch {epoch}/{num_epochs}] loss={avg_loss:.4f}")
+        logger.info("epoch %d/%d loss=%.6f", epoch, num_epochs, avg_loss)
+        print(f"[epoch {epoch}/{num_epochs}] loss={avg_loss:.6f}")
 
     _save_artifacts(model, cat_vocabs, numeric_scalers, artifact_dir)
 
