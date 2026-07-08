@@ -57,7 +57,7 @@ def encode_padded_genres(
 
 
 class MediaSequenceDataset(Dataset):
-    """SASRec 다음-아이템 예측 학습용. 시퀀스 길이가 2 미만이면(다음 아이템을 만들 수 없어)
+    """SASRec 다음-아이템 예측 학습용. 시퀀스 길이가 min_len 미만이면(학습 신호가 너무 약해)
     학습 대상에서 제외한다 (임베딩 추출은 MediaSequenceInferenceDataset이 별도로 처리)."""
 
     def __init__(
@@ -73,6 +73,7 @@ class MediaSequenceDataset(Dataset):
         connection_type_col: str,
         side_vocabs: SideFeatureVocabs,
         max_genres: int,
+        min_len: int = 2,
     ):
         self.max_len = max_len
         self.pad_id = vocab.token_to_id[NA_TOKEN]
@@ -92,7 +93,7 @@ class MediaSequenceDataset(Dataset):
         sequences = build_sequences(df, id_col, media_col, ts_col, (genre_col, ad_type_col, connection_type_col))
         for uid, seqs in sequences.items():
             tokens = seqs[media_col]
-            if len(tokens) < 2:
+            if len(tokens) < min_len:
                 self.skipped += 1
                 continue
 

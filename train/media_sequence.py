@@ -117,13 +117,18 @@ def train(
         max_genres=config.MAX_GENRES_PER_EVENT,
     )
 
-    train_dataset = MediaSequenceDataset(df, vocab, config.MAX_SEQ_LEN, **dataset_kwargs)
+    train_dataset = MediaSequenceDataset(
+        df, vocab, config.MAX_SEQ_LEN, **dataset_kwargs, min_len=config.MIN_SEQ_LEN
+    )
     if train_dataset.skipped:
-        msg = f"시퀀스 길이 2 미만이라 학습에서 제외된 유저 {train_dataset.skipped}명 (inference에서는 포함되어 뽑힘)"
+        msg = (
+            f"시퀀스 길이 {config.MIN_SEQ_LEN} 미만이라 학습에서 제외된 유저 "
+            f"{train_dataset.skipped}명 (inference에서는 포함되어 뽑힘)"
+        )
         logger.warning(msg)
         print(f"[WARN] {msg}")
     if len(train_dataset) == 0:
-        raise ValueError("다음-아이템 학습에 쓸 수 있는(시퀀스 길이 2 이상) 유저가 없습니다.")
+        raise ValueError(f"다음-아이템 학습에 쓸 수 있는(시퀀스 길이 {config.MIN_SEQ_LEN} 이상) 유저가 없습니다.")
 
     loader = DataLoader(train_dataset, batch_size=min(batch_size, len(train_dataset)), shuffle=True)
 

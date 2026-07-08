@@ -40,6 +40,9 @@ AD_TYPE_MAX_VOCAB_SIZE = 20
 CONNECTION_TYPE_MAX_VOCAB_SIZE = 20
 
 MAX_SEQ_LEN = 50     # 유저당 최근 N스텝만 사용 (그보다 길면 앞부분을 자름)
+MIN_SEQ_LEN = 5      # 이벤트가 이보다 적은 유저는 학습에서 제외(다음-아이템 예측 신호가 너무 약함).
+                      # inference/media_sequence.py도 동일 기준으로 임베딩 자체를 제외한다
+                      # (신뢰하기 어려운 임베딩이 lookalike 스코어링에 섞이지 않도록).
 
 EMBED_DIM = 64
 N_HEADS = 2
