@@ -117,6 +117,13 @@ def run(cfg: dict, skip_train: bool = False) -> None:
     _save_csv(result, bt_output)
     print(f"[INFO] 백테스트 결과 저장: {bt_output}")
 
+    cumulative_output = bt_cfg.get("cumulative_output")
+    if cumulative_output:
+        cumulative = backtest.cumulative_topk_summary(result, score_col="lookalike_score")
+        os.makedirs(os.path.dirname(cumulative_output) or ".", exist_ok=True)
+        cumulative.to_csv(cumulative_output)
+        print(f"[INFO] 누적 top-K% 결과 저장: {cumulative_output}")
+
 
 def main():
     parser = argparse.ArgumentParser(

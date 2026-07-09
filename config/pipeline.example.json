@@ -34,6 +34,7 @@
     "id_map": "data/raw/05_new_users_user_profile_jun.csv",
     "map_from_col": "req_user_id",
     "map_to_col": "device_ifa",
-    "output": "data/embeddings/supervised_lookalike_scored_jun_backtest.csv"
+    "output": "data/embeddings/supervised_lookalike_scored_jun_backtest.csv",
+    "cumulative_output": "data/embeddings/supervised_lookalike_scored_jun_backtest_topk.csv"
   }
 }
