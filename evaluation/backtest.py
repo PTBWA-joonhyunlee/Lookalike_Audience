@@ -119,7 +119,7 @@ def main():
     parser.add_argument(
         "--cumulative-output",
         default=None,
-        help="상위 10%/20%/.../100% 누적 라벨 비율·lift 표를 저장할 CSV 경로 (지정 안 하면 콘솔 출력만)",
+        help="상위 10%%/20%%/.../100%% 누적 라벨 비율·lift 표를 저장할 CSV 경로 (지정 안 하면 콘솔 출력만)",
     )
     parser.add_argument(
         "--config",
