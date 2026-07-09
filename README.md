@@ -190,6 +190,52 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 (`conv_matched_ip_cmp_any_window`는 cmp_no까지 요구해 정밀도는 높지만 양성이 30명뿐이라
 백테스트엔 표본이 부족함 — `conv_matched_ip_any_cmp_any_window`(IP만, 170명)를 기본으로 쓴다).
 
+### 2-6. 재학습 (IP 매칭 전환 라벨로, 극단적 불균형 대응 포함)
+
+2-5의 1차 백테스트로 "재학습할 가치가 있다"는 최소 신호를 확인한 뒤의 단계. 두 가지 문제를
+먼저 풀어야 한다(배경은 [`docs/_archive/202607091533.md`](docs/_archive/202607091533.md) "다음
+단계" 참고):
+
+1. **학습 pool의 5% 샘플링 문제** — 양성(IP+cmp_no 매칭, 4~5월 기준 412명)이 5% 샘플 안에는
+   대략 20명 정도만 남는다. 매칭 유저만 전수로 별도 조회해서 pool에 강제 병합한다
+   (`scoring.build_stratified_pool`).
+2. **극단적 불균형(양성 0.01~0.17%)** — `scoring.train_supervised_lookalike`에 층화
+   미니배치 샘플링(`--pos-frac`)과 라벨 층화 train/val 분할, PR-AUC·top-K% recall 리포트를
+   추가했다(코드 변경, 시드 자체는 그대로 넣으면 자동 적용됨).
+
+```
+# 1) querys/addi_conv/12~14.sql을 Athena에서 실행, 결과 CSV를 data/raw/에 저장
+#    (12: 4~5월 IP+cmp_no 매칭 유저 목록=새 시드 후보, 13/14: 그 유저들의 프로필/미디어 방문 전수 조회)
+
+# 2) 매칭 유저만 임베딩 추출 (기존 학습된 임베딩 모델 재사용, 재학습 아님)
+.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/13_conv_matched_users_profile_apr_may.csv     --model-dir data/models/user_profile_addi_202604_05        --output data/embeddings/user_profile_conv_matched_apr_may.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/14_conv_matched_users_media_visit_apr_may.csv --model-dir data/models/media_sequence_addi_genre_202604_05 --output data/embeddings/media_sequence_conv_matched_apr_may.csv
+
+# 3) 기존 5% 샘플 pool에 병합 (음성은 5% 유지, 양성은 전수 포함)
+.venv\Scripts\python.exe -m scoring.build_stratified_pool \
+  --sampled-emb data/embeddings/user_profile_apr_may.csv \
+  --full-emb data/embeddings/user_profile_conv_matched_apr_may.csv \
+  --output data/embeddings/user_profile_apr_may_stratified.csv
+.venv\Scripts\python.exe -m scoring.build_stratified_pool \
+  --sampled-emb data/embeddings/media_sequence_apr_may.csv \
+  --full-emb data/embeddings/media_sequence_conv_matched_apr_may.csv \
+  --output data/embeddings/media_sequence_apr_may_stratified.csv
+
+# 4) 분류기 재학습 (시드 = 12번 쿼리 결과, pool = 3번에서 병합한 층화 pool)
+.venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
+  --pool-profile-emb data/embeddings/user_profile_apr_may_stratified.csv \
+  --pool-media-emb data/embeddings/media_sequence_apr_may_stratified.csv \
+  --seed-ids data/raw/12_conv_matched_users_apr_may.csv \
+  --model-out data/models/fusion_classifier_addi_conv_ip \
+  --pos-frac 0.1 --topk-pct 0.1
+```
+
+학습 로그의 `val_recall@top10%`(상위 10% 안에 검증셋 양성 중 몇 %가 들어오는지)를 보고
+epoch/`--pos-frac`을 조정한다 — 표본이 워낙 작아 `val_auc`만으로는 판단하기 어렵다. 재학습한
+모델로 §2-5의 4번 스코어링·백테스트 커맨드를 다시 돌려서(`--model-dir`을
+`fusion_classifier_addi_conv_ip`로 교체) `docs/_archive/202607091533.md`의 1차 결과와
+비교한다.
+
 ## 산출물 현황 요약
 
 | 산출물 | 위치 | 상태 |
