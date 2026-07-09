@@ -1,6 +1,6 @@
 # 파이프라인 산출물 스키마
 
-`querys/pipeline/01~08.sql`이 Athena에서 뽑아내는 가공된 CSV 8종의 스키마. 원본(raw) Athena
+`querys/pipeline/01~10.sql`이 Athena에서 뽑아내는 가공된 CSV 10종의 스키마. 원본(raw) Athena
 테이블 자체의 스키마는 [`addi_raw_data_schema.md`](addi_raw_data_schema.md) 참고 — 이 문서는
 "그 원본 테이블에서 파이프라인이 실제로 뽑아 쓰는 결과물"을 다룬다. 실행 순서/커맨드는
 [`README.md`](../README.md) §1, §2 참고. 전환 정의(IP 매칭)를 왜 이렇게 잡았는지는
@@ -9,7 +9,8 @@
 
 아래 행 수/분포는 로컬에 있는 최근 실행분(2026-07-09 추출) 기준 — SQL을 다시 실행하면 원본
 로그가 늘어난 만큼 숫자는 바뀐다. **01/02는 유저 단위 5% 샘플링이 걸려 있다**
-(`mod(crc32(req_user_id), 100) < 5`, README §1 "주의" 참고) — 03~08은 샘플링 없이 전수.
+(`mod(crc32(req_user_id), 100) < 5`, README §1 "주의" 참고) — 03~10은 샘플링 없이 전수.
+09/10은 아직 실행 전이라 행 수 미기재(실행 후 이 표를 갱신할 것).
 
 ## 산출물 개요
 
@@ -21,8 +22,10 @@
 | 04 | `04_seed_profile_apr_may.csv` | 유저 1행 | 396 | 없음(전수) | 시드 유저 프로필(층화 pool 병합용) |
 | 05 | `05_seed_media_apr_may.csv` | 이벤트 | 51,158 | 없음(전수) | 시드 유저 미디어 방문(층화 pool 병합용) |
 | 06 | `06_backtest_labels_jun.csv` | ifa 1행 | 303,554 | 없음(전수) | 백테스트 라벨(IP 매칭 전환 여부) |
-| 07 | `07_scoring_target_profile_jun.csv` | 유저 1행 | 284,940 | 없음(전수) | user_profile 추론 입력(스코어링 대상) |
-| 08 | `08_scoring_target_media_jun.csv` | 이벤트 | 17,531,914 | 없음(전수) | media_sequence 추론 입력(스코어링 대상) |
+| 07 | `07_scoring_target_profile_jun.csv` | 유저 1행 | 284,940 | 없음(전수) | user_profile 추론 입력(스코어링 대상, 백테스트용) |
+| 08 | `08_scoring_target_media_jun.csv` | 이벤트 | 17,531,914 | 없음(전수) | media_sequence 추론 입력(스코어링 대상, 백테스트용) |
+| 09 | `09_new_users_profile_jun.csv` | 유저 1행 | (미실행) | 없음(전수) | user_profile 추론 입력(실제 후보 리스트, leakage 없음) |
+| 10 | `10_new_users_media_jun.csv` | 이벤트 | (미실행) | 없음(전수) | media_sequence 추론 입력(실제 후보 리스트, leakage 없음) |
 
 ## 1. `01_pool_profile_apr_may.csv` — pool 유저 프로필
 
@@ -109,6 +112,21 @@ req_user_id 매핑. **샘플링 없이 전수**.
 
 07은 284,940명, 08은 17,531,914개 이벤트(distinct req_user_id 303,708명 — 06의 라벨 모집단
 303,554명과 거의 같지만 완전히 일치하지는 않는다, bid log 매칭 여부에 따라 약간의 차이).
+
+**주의**: 이 유저들은 이미 postback을 낸 사람들이라, 4~5월 pool(01/02)이나 시드(03~05)에
+같은 사람이 있을 수 있다 — 07/08 기반 백테스트에는 학습-검증 겹침(leakage) 위험이 있다
+(README §2-5 "주의" 참고). 겹침 없는 순수 후보군이 필요하면 09/10을 쓴다.
+
+## 9. `09_new_users_profile_jun.csv` / 10. `10_new_users_media_jun.csv` — 6월 신규 유저(실제 후보 리스트)
+
+**소스**: `addi_bid_log_flatten`, 2026-06, 2026-04~05 bid log에 전혀 없던 `req_user_id`만
+(신규 유저), 컴플라이언스 필터, **5% 샘플링 없음**(실제 후보 리스트 산출 단계이므로 전수).
+컬럼 구조는 각각 01/02와 동일.
+
+07/08(이미 반응한 postback 유저, 백테스트/검증용)과 달리 이 유저들은 정의상 4~5월 pool/
+시드에 등장할 수 없다 — 학습 때 본 적 없는 순수 held-out 집합이라, 이걸 스코어링한 결과
+(`data/embeddings/new_users_scored_jun.csv`, README §2-6)가 leakage 걱정 없는 실제 타겟팅
+후보 리스트다.
 
 ## 데이터 흐름 요약
 

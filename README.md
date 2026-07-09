@@ -193,6 +193,40 @@ epoch/`--pos-frac`을 조정한다 — 표본이 작을 땐 `val_auc`만으로�
 lift 표(`evaluation.backtest.cumulative_topk_summary`)를 만든다. 옵션을 CLI 대신 JSON으로
 관리하려면 `--config config/<이름>.json`을 쓴다(`config/backtest.example.json` 참고).
 
+**주의(학습-검증 겹침/leakage)**: 07/08(6월 postback 유저 전체)은 4~5월 pool/시드와 겹치는
+유저를 배제하지 않는다 — 시드(양성 485명) 중 일부가 6월에도 postback을 내면 백테스트
+모집단에 다시 나타날 수 있고, 그 사람은 분류기가 "예측"한 게 아니라 이미 정답으로 학습한
+사람이라 lift 수치가 실제보다 낙관적으로 나올 수 있다. 그래서 백테스트는 "모델이 방향은
+맞게 가는지" 확인하는 용도로만 쓰고, 실제 후보 리스트는 정의상 pool/시드와 안 겹치는
+2-6(신규 유저)으로 뽑는다.
+
+### 2-6. 신규 유저 스코어링 (실제 후보 리스트 산출, leakage 없음)
+
+백테스트(2-5)는 이미 반응한 유저로 모델을 검증하는 단계였다면, 이건 실제로 아직 반응 안 한
+유저 중 전환 가능성이 높은 사람을 찾아내는 단계 — 원래 이 프로젝트의 목표였던 "신규 유저
+룩어라이크 타겟팅"을 새 모델(IP 매칭 전환 기준)로 다시 수행한다. 재학습 없이 2-4에서 이미
+학습된 분류기를 그대로 쓴다.
+
+```
+# 1) querys/pipeline/09,10.sql을 Athena에서 실행, 결과 CSV를 data/raw/에 저장
+#    (4~5월 bid log에 없다가 6월에 처음 등장한 신규 유저 전원 — 샘플링 없음)
+
+# 2) 임베딩 추출 (기존 학습된 임베딩 모델 재사용, 재학습 없음)
+.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/09_new_users_profile_jun.csv --model-dir data/models/user_profile_202604_05   --output data/embeddings/new_users_profile_jun.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/10_new_users_media_jun.csv    --model-dir data/models/media_sequence_202604_05 --output data/embeddings/new_users_media_jun.csv
+
+# 3) 스코어링 (기존 fusion_classifier 재사용, 재학습 없음)
+.venv\Scripts\python.exe -m scoring.infer_supervised_lookalike \
+  --model-dir data/models/fusion_classifier \
+  --target-profile-emb data/embeddings/new_users_profile_jun.csv \
+  --target-media-emb data/embeddings/new_users_media_jun.csv \
+  --output data/embeddings/new_users_scored_jun.csv
+```
+
+`new_users_scored_jun.csv`(`req_user_id`, `lookalike_score`)가 실제 타겟팅에 쓸 수 있는
+산출물이다 — 점수 상위 유저부터 우선순위를 매기면 된다. 이 유저들은 정의상(4~5월 bid log에
+아예 없었음) 학습 pool/시드와 겹치지 않으므로, 2-5의 leakage 우려가 여기엔 해당하지 않는다.
+
 ## 산출물 현황 요약
 
 | 산출물 | 위치 | 상태 |
