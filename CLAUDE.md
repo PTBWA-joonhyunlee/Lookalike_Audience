@@ -60,8 +60,12 @@ Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference
 ## 문서
 
 - `README.md` — 전체 파이프라인 실행 커맨드 + 산출물 위치 (가장 먼저 볼 문서)
-- `docs/data_schema.md` — 원본 4개 테이블 스키마
+- `docs/addi_raw_data_schema.md` — 원본(raw) Athena 4개 테이블 스키마
+- `docs/audience_embedding_data_schema.md` — `querys/audience_embedding/` 01~06.sql이 뽑는
+  가공된 산출물(파이프라인 입력 CSV) 스키마
 - `docs/model_architecture.md` — 임베딩 모델 구조/하이퍼파라미터, fusion/스코어링 방식 비교
+- `docs/output_analysis.md` — 백테스트 결과(그룹별 반응률/배율)를 비전공자도 읽을 수 있게
+  설명한 문서. 새로 백테스트를 돌려 결과가 바뀌면 이 문서의 수치도 갱신할 것.
 - `docs/_archive/` — 위 문서들의 상세 조사 과정/의사결정 히스토리 원본 (참고용, 갱신 안 함).
   규칙 기반 T1~T4 관심 유저 리스트(J1/J2, 폐기된 별도 트랙)의 설계/파일럿 결과도 여기
   `audience_list_project_full.md`에 남아있다.

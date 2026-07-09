@@ -103,4 +103,8 @@ addi_bid_log_flatten ──(cmp_no, deal_id, media_id)── addi_postback_log  
 
 `addi_advertisement.adspid`와 로그 테이블의 `cmp_no`/`ag_no`는 값 체계가 달라(예: adspid=573 vs cmp_no=10053) 직접 조인되지 않습니다. 캠페인/광고그룹 마스터가 별도로 존재할 가능성이 높습니다 — 확인 필요.
 
-정합성 검증 세부 결과는 [`data_validation_report.md`](./data_validation_report.md) 참고.
+정합성 검증 세부 결과는 [`_archive/data_validation_report.md`](_archive/data_validation_report.md) 참고.
+
+이 문서는 원본(raw) Athena 테이블 스키마를 다룬다. `querys/audience_embedding/`의 SQL이
+뽑아내는 가공된 산출물(파이프라인 입력 CSV) 스키마는 [`audience_embedding_data_schema.md`](audience_embedding_data_schema.md)
+참고.

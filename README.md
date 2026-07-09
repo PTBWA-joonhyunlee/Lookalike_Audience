@@ -47,6 +47,8 @@ python -m venv .venv
 | 05 | `05_new_users_user_profile_jun.sql` | `05_new_users_user_profile_jun.csv` | 6월 신규 유저 프로필 (req_user_id↔device_ifa 매핑 포함) |
 | 06 | `06_postback_jun_for_backtest.sql` | `06_postback_max_tier_jun.csv` | 6월 device_ifa별 최고 도달 tier (백테스트용) |
 
+각 CSV의 컬럼/결측률/분포는 [`docs/audience_embedding_data_schema.md`](docs/audience_embedding_data_schema.md) 참고.
+
 **주의**: 현재 01/02/04/05는 데이터량이 너무 커서(캠페인 무필터 2개월치, 7일 8,990만 건
 기준 환산 시 7~8억 건대) 유저 단위 5% 샘플링이 걸려 있다(`mod(crc32(...), 100) < 5`, 각 SQL
 파일 주석 참고). **실제 서비스용 후보 리스트를 뽑을 땐 이 조건을 지우고 재실행**해야 한다
