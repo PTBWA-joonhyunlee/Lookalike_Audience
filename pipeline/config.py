@@ -8,7 +8,7 @@ from typing import Any, Dict, Union
 
 from embedding.common.config_file import load_json_config
 
-KNOWN_KEYS = {"device", "raw", "models", "embeddings", "train", "scoring_output", "backtest"}
+KNOWN_KEYS = {"device", "raw", "models", "embeddings", "train", "stratify", "scoring_output", "backtest"}
 
 
 def load_pipeline_config(path: Union[str, Path]) -> Dict[str, Any]:

@@ -1,8 +1,8 @@
 {
   "_comment": "cp config/infer_supervised_lookalike.example.json config/<이름>.json 으로 복사해서 값을 채운 뒤 python -m scoring.infer_supervised_lookalike --config config/<이름>.json 으로 사용한다. config/infer_supervised_lookalike.example.json을 제외한 config/ 아래 파일은 .gitignore되어 커밋되지 않는다.",
-  "model_dir": "data/models/fusion_classifier_addi",
-  "target_profile_emb": "data/embeddings/user_profile_jun_new.csv",
-  "target_media_emb": "data/embeddings/media_sequence_jun_new.csv",
-  "output": "data/embeddings/supervised_lookalike_scored_jun.csv",
+  "model_dir": "data/models/fusion_classifier",
+  "target_profile_emb": "data/embeddings/scoring_target_profile_jun.csv",
+  "target_media_emb": "data/embeddings/scoring_target_media_jun.csv",
+  "output": "data/embeddings/scored_jun.csv",
   "id_col": "req_user_id"
 }
