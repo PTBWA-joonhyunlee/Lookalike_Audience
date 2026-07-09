@@ -11,5 +11,6 @@
   "map_from_col": "req_user_id",
   "map_to_col": "device_ifa",
   "n_buckets": 10,
-  "output": "data/embeddings/supervised_lookalike_scored_jun_backtest.csv"
+  "output": "data/embeddings/supervised_lookalike_scored_jun_backtest.csv",
+  "cumulative_output": "data/embeddings/supervised_lookalike_scored_jun_backtest_topk.csv"
 }

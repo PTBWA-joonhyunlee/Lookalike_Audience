@@ -18,6 +18,7 @@
 
 import argparse
 
+import numpy as np
 import pandas as pd
 
 from evaluation.backtest_config import load_backtest_config
@@ -72,6 +73,35 @@ def run_backtest(
     return df
 
 
+def cumulative_topk_summary(
+    df: pd.DataFrame,
+    score_col: str,
+    label_col: str = "label",
+    steps: int = 10,
+) -> pd.DataFrame:
+    """스코어 상위 10%, 20%, ..., 100%(누적)별 라벨 비율/lift. 분위(decile)별 구간 비율과 달리
+    "상위 N%를 타겟팅했다면"을 그대로 답하는 누적 지표라 실무 의사결정에 더 직접 대응한다."""
+    ordered = df.sort_values(score_col, ascending=False).reset_index(drop=True)
+    n = len(ordered)
+    overall_rate = ordered[label_col].mean()
+
+    rows = []
+    for step in range(1, steps + 1):
+        pct = step * (100 // steps)
+        cutoff = max(1, int(np.ceil(n * pct / 100)))
+        top = ordered.iloc[:cutoff]
+        rate = top[label_col].mean()
+        rows.append(
+            {
+                "top_pct": pct,
+                "n": cutoff,
+                "label_rate": rate,
+                "lift_vs_overall": rate / overall_rate if overall_rate > 0 else float("nan"),
+            }
+        )
+    return pd.DataFrame(rows).set_index("top_pct")
+
+
 def main():
     parser = argparse.ArgumentParser(description="스코어 CSV를 실제 라벨(전환 등) CSV와 대조해 구간별 lift를 계산한다.")
     parser.add_argument("--scored", help="스코어 CSV (id_col + score_col)")
@@ -87,10 +117,15 @@ def main():
     parser.add_argument("--n-buckets", type=int, default=None, help="스코어를 몇 분위로 나눠볼지 (기본 10 = decile)")
     parser.add_argument("--output")
     parser.add_argument(
+        "--cumulative-output",
+        default=None,
+        help="상위 10%/20%/.../100% 누적 라벨 비율·lift 표를 저장할 CSV 경로 (지정 안 하면 콘솔 출력만)",
+    )
+    parser.add_argument(
         "--config",
         help="scored/score_col/scored_id_col/labels/label_col/label_id_col/label_threshold/id_map/"
-        "map_from_col/map_to_col/n_buckets/output을 담은 JSON 설정 파일 (config/backtest.example.json "
-        "참고). 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선한다.",
+        "map_from_col/map_to_col/n_buckets/output/cumulative_output을 담은 JSON 설정 파일 "
+        "(config/backtest.example.json 참고). 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선한다.",
     )
     args = parser.parse_args()
 
@@ -107,6 +142,7 @@ def main():
     map_to_col = args.map_to_col or cfg.get("map_to_col")
     n_buckets = args.n_buckets if args.n_buckets is not None else cfg.get("n_buckets", 10)
     output = args.output or cfg.get("output")
+    cumulative_output = args.cumulative_output or cfg.get("cumulative_output")
 
     missing = [
         name
@@ -142,6 +178,12 @@ def main():
     )
     result.to_csv(output, index=False)
     print(f"[INFO] 백테스트 결과 저장: {output}")
+
+    cumulative = cumulative_topk_summary(result, score_col=score_col)
+    print(cumulative)
+    if cumulative_output:
+        cumulative.to_csv(cumulative_output)
+        print(f"[INFO] 누적 top-K% 결과 저장: {cumulative_output}")
 
 
 if __name__ == "__main__":

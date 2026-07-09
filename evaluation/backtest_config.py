@@ -21,6 +21,7 @@ KNOWN_KEYS = {
     "map_to_col",
     "n_buckets",
     "output",
+    "cumulative_output",
 }
 
 
