@@ -11,9 +11,13 @@
 | 09 | `09_postback_conv_match_jun_for_backtest.sql` | 6월 postback 유저 전원의 IP(+cmp_no) 매칭 여부 — 백테스트 라벨 |
 | 10 | `10_postback_users_profile_jun.sql` | 6월 postback 유저 전원의 프로필 (user_profile 추론 입력) |
 | 11 | `11_postback_users_media_visit_jun.sql` | 6월 postback 유저 전원의 미디어 방문 (media_sequence 추론 입력) |
+| 12 | `12_conv_matched_users_apr_may.sql` | 4~5월 IP+cmp_no 매칭 유저(양성 후보, ~412명) 목록 — 재학습 시드 후보 |
+| 13 | `13_conv_matched_users_profile_apr_may.sql` | 12번 유저의 프로필 전수 조회(5% 샘플링 없음) |
+| 14 | `14_conv_matched_users_media_visit_apr_may.sql` | 12번 유저의 미디어 방문 전수 조회(5% 샘플링 없음) |
 
-실행 방법/이후 단계(임베딩 추출→스코어링→백테스트)는 루트 [`README.md`](../../README.md)
-"전환 정의 변경 백테스트" 절 참고.
+09~11은 재학습 없는 1차 백테스트(완료, `docs/_archive/202607091533.md`), 12~14는 재학습
+준비(층화 pool 조립, 아직 실행 전) 단계다. 실행 방법/이후 단계는 루트 [`README.md`](../../README.md)
+"전환 정의 변경 백테스트"/"재학습" 절 참고.
 
 ## `_archived/` — 스키마/매칭 방식 진단 쿼리 (결론 남, 재실행 불필요)
 
