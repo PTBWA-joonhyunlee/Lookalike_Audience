@@ -1,20 +1,30 @@
 # addi_data_embedding
 
-특정 광고(`cmp_no`)에 관심 있는 사용자 리스트를 뽑고(규칙 기반), 아직 postback(전환)이 없는
-신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를 임베딩으로 찾아내는(ML 기반) 프로젝트.
-원래 SQL/문서 저장소(`addi_data_embedding`)와 임베딩 모델 코드 저장소(`user-to-ad-encoder`)가
-분리돼 있었는데, 이 저장소 하나로 합쳤다(2026-07-08).
+`cmp_no`(=addi 캠페인) 광고에 노출·반응(postback)한 유저 중, 실제로 광고주 몰(mall)에서
+전환(IP 매칭 기준)했을 가능성이 높은 유저를 임베딩 기반 스코어링으로 가려내는 프로젝트.
+2026-04~05 데이터로 학습한 스코어를 2026-06 postback 유저 전체에 매겨서, "전체 postback
+유저 전환율 대비 스코어 상위 K%의 전환율"을 백테스트로 검증한다. 원래 SQL/문서 저장소
+(`addi_data_embedding`)와 임베딩 모델 코드 저장소(`user-to-ad-encoder`)가 분리돼 있었는데,
+이 저장소 하나로 합쳤다(2026-07-08).
+
+> 이 프로젝트는 원래 "아직 postback 없는 신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를
+> 찾는"(신규 유저 룩어라이크 타겟팅) 목적으로 시작했다. 그 트랙(T2+ postback tier를 전환으로
+> 보는 시드/백테스트)은 2026-07-09에 삭제했다 — 전환 정의를 실제 몰 IP 매칭으로 바꾸면서
+> 목적도 "postback 유저 중 실전환 가능성이 높은 유저 선별"로 좁혔기 때문. 신규 유저 타겟팅이
+> 다시 필요해지면 같은 임베딩(user_profile/media_sequence, 재학습 불필요)과 스코어링 구조
+> 위에서 대상 모집단만 바꿔 재구성하면 된다(과거 구현은 git 히스토리 참고).
 
 ## 폴더 구조
 
 ```
-querys/       Athena SQL — 이 환경엔 Athena 접근 권한이 없어 콘솔에서 직접 실행 필요 (아래 §1)
+querys/pipeline/  Athena SQL 8개(01~08) — 이 환경엔 Athena 접근 권한이 없어 콘솔에서 직접 실행 필요 (아래 §1)
+querys/athena_validation_queries/  데이터 정합성 검증 — 파이프라인과 별개 트랙, 실행 불필요
 embedding/    모델 구조/데이터셋/전처리 정의 (user_profile, media_sequence) — train/inference가 공유
 train/        학습 실행 진입점 (아티팩트 저장까지만, 임베딩은 안 뽑음)
 inference/    학습된 모델로 재학습 없이 임베딩 추출
-scoring/      fusion + lookalike 스코어링 (지도학습 분류기, train·infer 분리)
+scoring/      fusion + lookalike 스코어링(지도학습 분류기, train·infer 분리) + 층화 pool 병합
 evaluation/   임베딩 거리 확인(distance.py), 스코어 대비 실제 결과 백테스트(backtest.py)
-pipeline/     학습→추론→스코어링(→백테스트)을 config 하나로 한번에 실행 (아래 §2-0)
+pipeline/     학습→추론→[층화 pool 병합]→스코어링(→백테스트)을 config 하나로 한번에 실행 (아래 §2-0)
 data/         쿼리 결과 CSV / 임베딩 / 모델 아티팩트 (git 추적 안 됨, .gitignore)
 docs/         테이블 스키마 레퍼런스 + 모델 아키텍처 스펙
 .venv/        Python 3.14 가상환경 (Windows, git 추적 안 됨)
@@ -35,59 +45,63 @@ python -m venv .venv
 
 ## 1. 데이터 생성 (Athena)
 
-`querys/audience_embedding/01~06.sql`을 Athena 콘솔에서 순서대로 실행하고, 결과 CSV를 아래
-이름으로 `data/raw/`에 저장한다.
+`querys/pipeline/01~08.sql`을 Athena 콘솔에서 순서대로 실행하고, 결과 CSV를 아래 이름으로
+`data/raw/`에 저장한다.
 
-| # | SQL | 저장 파일명 | 그레인 |
-|---|---|---|---|
-| 01 | `01_top500_media_visit.sql` | `01_top500_media_visit.csv` | 이벤트 (유저×콘텐츠장르×시각), 학습용, 4~5월 |
-| 02 | `02_user_profile.sql` | `02_user_profile.csv` | 유저 1행, 학습용, 4~5월 |
-| 03 | `03_seed_interested_users_apr_may.sql` | `03_seed_interested_users_apr_may.csv` | 시드(4~5월 관심 유저) 목록 |
-| 04 | `04_new_users_top500_media_visit_jun.sql` | `04_new_users_top500_media_visit_jun.csv` | 6월 신규 유저 이벤트 (스코어링 대상) |
-| 05 | `05_new_users_user_profile_jun.sql` | `05_new_users_user_profile_jun.csv` | 6월 신규 유저 프로필 (req_user_id↔device_ifa 매핑 포함) |
-| 06 | `06_postback_jun_for_backtest.sql` | `06_postback_max_tier_jun.csv` | 6월 device_ifa별 최고 도달 tier (백테스트용) |
+| # | SQL | 저장 파일명 | 그레인 | 필요 시점 |
+|---|---|---|---|---|
+| 01 | `01_pool_profile_apr_may.sql` | `01_pool_profile_apr_may.csv` | 유저 1행, pool(5% 샘플), 4~5월 | 항상 |
+| 02 | `02_pool_media_apr_may.sql` | `02_pool_media_apr_may.csv` | 이벤트, pool(5% 샘플), 4~5월 | 항상 |
+| 03 | `03_seed_users_apr_may.sql` | `03_seed_users_apr_may.csv` | 유저 1행, 시드(양성) 목록, 4~5월 | 항상 |
+| 04 | `04_seed_profile_apr_may.sql` | `04_seed_profile_apr_may.csv` | 유저 1행, 시드 전수(샘플링 없음) | 층화 pool 병합 시 |
+| 05 | `05_seed_media_apr_may.sql` | `05_seed_media_apr_may.csv` | 이벤트, 시드 전수(샘플링 없음) | 층화 pool 병합 시 |
+| 06 | `06_backtest_labels_jun.sql` | `06_backtest_labels_jun.csv` | ifa 1행, 6월 backtest 라벨 | 백테스트 시 |
+| 07 | `07_scoring_target_profile_jun.sql` | `07_scoring_target_profile_jun.csv` | 유저 1행, 6월 postback 유저 전체 | 항상 |
+| 08 | `08_scoring_target_media_jun.sql` | `08_scoring_target_media_jun.csv` | 이벤트, 6월 postback 유저 전체 | 항상 |
 
-각 CSV의 컬럼/결측률/분포는 [`docs/audience_embedding_data_schema.md`](docs/audience_embedding_data_schema.md) 참고.
+각 CSV의 컬럼/결측률/분포는 [`docs/pipeline_data_schema.md`](docs/pipeline_data_schema.md) 참고.
+왜 이렇게 8단계로 나뉘었는지(전환 정의를 IP 매칭으로 바꾼 배경, 5% 샘플링 문제, 극단적
+클래스 불균형 등)는 [`querys/pipeline/README.md`](querys/pipeline/README.md)와
+[`docs/_archive/202607091533.md`](docs/_archive/202607091533.md) /
+[`docs/_archive/202607091610.md`](docs/_archive/202607091610.md) 참고.
 
-**주의**: 현재 01/02/04/05는 데이터량이 너무 커서(캠페인 무필터 2개월치, 7일 8,990만 건
-기준 환산 시 7~8억 건대) 유저 단위 5% 샘플링이 걸려 있다(`mod(crc32(...), 100) < 5`, 각 SQL
-파일 주석 참고). **실제 서비스용 후보 리스트를 뽑을 땐 이 조건을 지우고 재실행**해야 한다
-(모델 재학습은 유지해도 됨 — 학습은 표본이어도 스코어링 대상은 전수여야 함).
+**주의**: 01/02는 데이터량이 너무 커서(캠페인 무필터 2개월치) 유저 단위 5% 샘플링이 걸려
+있다(`mod(crc32(...), 100) < 5`, 각 SQL 파일 주석 참고). 03(시드)/04/05(시드 전수)/07/08(6월
+스코어링 대상)는 샘플링 없이 전수다.
 
-`querys/athena_validation_queries/`(데이터 정합성 검증)는 별도 트랙, 이 파이프라인 실행에는
-필요 없다.
-
-## 2. 파이프라인 실행 (학습 → 추론 → 스코어링 → 백테스트)
+## 2. 파이프라인 실행 (학습 → 추론 → [층화 pool 병합] → 스코어링 → 백테스트)
 
 ### 2-0. 한번에 실행 (권장)
 
-`querys/audience_embedding/01~05.sql` 결과 CSV를 `data/raw/`에 올려둔 상태라면(06은 아래
-2-4처럼 백테스트를 켤 때만 필요), 학습→추론→스코어링(→백테스트)을 한 커맨드로 실행한다.
-개별 단계 함수를 그대로 호출할 뿐이라 산출물 위치는 아래 2-1~2-4의 수동 실행과 동일하다.
+`querys/pipeline/01~03.sql`(층화 pool 병합을 쓰면 04/05도) 결과 CSV를 `data/raw/`에 올려둔
+상태라면, 학습→추론→[층화 pool 병합]→스코어링(→백테스트)을 한 커맨드로 실행한다. 개별 단계
+함수를 그대로 호출할 뿐이라 산출물 위치는 아래 2-1~2-5의 수동 실행과 동일하다.
 
 ```
 cp config/pipeline.example.json config/pipeline.json   # 값 채우기 (경로는 기본값 그대로 써도 됨)
 .venv\Scripts\python.exe -m pipeline.run_all --config config/pipeline.json
 ```
 
-`config/pipeline.example.json` 참고. `backtest.enabled`를 `true`로 켜면 4단계까지, 기본(`false`)이면
-스코어링까지만 실행한다(실제 postback이 쌓인 기간에만 백테스트가 의미 있음 — 2-4 참고).
+`config/pipeline.example.json` 참고. 양성(시드)이 pool의 5% 샘플에 거의 안 남을 만큼
+희소하면 `stratify` 블록을 채운다(불필요하면 그 블록 자체를 지운다 — 2-3 참고).
+`backtest.enabled`를 `true`로 켜면 백테스트까지, 기본(`false`)이면 스코어링까지만
+실행한다(실제 postback이 쌓인 기간에만 백테스트가 의미 있음 — 2-5 참고).
 
-새 기간 신규 유저만 다시 추론→스코어링하고 싶을 때(임베딩 모델 재학습 불필요, 2-1 참고)는
+새 기간 스코어링 대상만 다시 추론→스코어링하고 싶을 때(임베딩 모델 재학습 불필요, 2-1 참고)는
 `--skip-train`을 붙인다:
 
 ```
 .venv\Scripts\python.exe -m pipeline.run_all --config config/pipeline.json --skip-train
 ```
 
-아래 2-1~2-4는 이 파이프라인이 내부적으로 호출하는 개별 단계 — 한 단계만 다시 돌리거나
+아래 2-1~2-5는 이 파이프라인이 내부적으로 호출하는 개별 단계 — 한 단계만 다시 돌리거나
 디버깅할 때 직접 쓴다.
 
 ### 2-1. 학습 (최초 1회, 이후 새 기간 데이터가 쌓이면 재실행)
 
 ```
-.venv\Scripts\python.exe -m train.user_profile   --input data/raw/02_user_profile.csv      --output data/models/user_profile_addi
-.venv\Scripts\python.exe -m train.media_sequence --input data/raw/01_top500_media_visit.csv --output data/models/media_sequence_addi_genre
+.venv\Scripts\python.exe -m train.user_profile   --input data/raw/01_pool_profile_apr_may.csv --output data/models/user_profile_202604_05
+.venv\Scripts\python.exe -m train.media_sequence --input data/raw/02_pool_media_apr_may.csv    --output data/models/media_sequence_202604_05
 ```
 
 GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 사용)/`--device cuda`/`--device cpu`로
@@ -95,157 +109,99 @@ GPU가 있는 환경에서는 `--device auto`(기본값, cuda 있으면 자동 �
 
 모델 구조/필드별 처리 방식은 [`docs/model_architecture.md`](docs/model_architecture.md) 참고.
 
-### 2-2. 추론 (pool=4~5월 전체, target=6월 신규 유저 — 새 데이터가 생기면 매번 반복)
+### 2-2. 추론 (pool=4~5월 전체, target=6월 postback 유저 전체 — 새 데이터가 생기면 매번 반복)
 
 ```
-.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/02_user_profile.csv                    --model-dir data/models/user_profile_addi        --output data/embeddings/user_profile_apr_may.csv
-.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/01_top500_media_visit.csv               --model-dir data/models/media_sequence_addi_genre --output data/embeddings/media_sequence_apr_may.csv
-.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/05_new_users_user_profile_jun.csv           --model-dir data/models/user_profile_addi        --output data/embeddings/user_profile_jun_new.csv
-.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/04_new_users_top500_media_visit_jun.csv     --model-dir data/models/media_sequence_addi_genre --output data/embeddings/media_sequence_jun_new.csv
+.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/01_pool_profile_apr_may.csv   --model-dir data/models/user_profile_202604_05        --output data/embeddings/pool_profile.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/02_pool_media_apr_may.csv      --model-dir data/models/media_sequence_202604_05      --output data/embeddings/pool_media.csv
+.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/07_scoring_target_profile_jun.csv --model-dir data/models/user_profile_202604_05      --output data/embeddings/scoring_target_profile_jun.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/08_scoring_target_media_jun.csv   --model-dir data/models/media_sequence_202604_05    --output data/embeddings/scoring_target_media_jun.csv
 ```
 
-### 2-3. 스코어링 (지도학습 분류기)
+### 2-3. 층화 pool 병합 (양성이 5% 샘플에 거의 안 남을 만큼 희소할 때)
+
+학습 pool(01/02)은 5% 샘플이라, 시드(양성)가 원래 적으면(IP 매칭 전환 기준 4~5월 412명 수준)
+샘플 안에는 대략 20명 정도만 남는다 — 이대로면 분류기 학습이 사실상 불가능하다. 시드 유저만
+전수 조회한 04/05를 임베딩으로 바꿔서 pool에 강제 병합한다(음성은 5% 유지, 양성은 전수 포함).
+
+```
+.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/04_seed_profile_apr_may.csv     --model-dir data/models/user_profile_202604_05        --output data/embeddings/seed_profile.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/05_seed_media_apr_may.csv        --model-dir data/models/media_sequence_202604_05      --output data/embeddings/seed_media.csv
+
+.venv\Scripts\python.exe -m scoring.build_stratified_pool \
+  --sampled-emb data/embeddings/pool_profile.csv --full-emb data/embeddings/seed_profile.csv \
+  --output data/embeddings/pool_profile_stratified.csv
+.venv\Scripts\python.exe -m scoring.build_stratified_pool \
+  --sampled-emb data/embeddings/pool_media.csv --full-emb data/embeddings/seed_media.csv \
+  --output data/embeddings/pool_media_stratified.csv
+```
+
+양성이 충분하면(예: 원래 T2+ 기준처럼 pool 안에 수만 명대) 이 단계를 건너뛰고 2-4에서
+`pool_profile.csv`/`pool_media.csv`를 그대로 써도 된다.
+
+### 2-4. 스코어링 (지도학습 분류기)
 
 train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 재학습 없이 스코어링)로 나뉜다
-— `embedding/` 모델들의 train→inference 구조와 동일. (centroid 코사인 유사도 baseline은
-백테스트에서 상위 90% 구간의 순위를 전혀 못 갈라 폐기 — 히스토리는 `docs/_archive/` 참고.)
+— `embedding/` 모델들의 train→inference 구조와 동일. 극단적 클래스 불균형(양성 0.01~0.17%
+수준) 대응으로 층화 미니배치 샘플링(`--pos-frac`)·라벨 층화 train/val 분할·PR-AUC/top-K%
+recall 리포트가 들어있다(`scoring/train_supervised_lookalike.py` 상단 주석 참고).
 
 ```
 .venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
-  --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
-  --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
-  --seed-ids data/raw/03_seed_interested_users_apr_may.csv \
-  --model-out data/models/fusion_classifier_addi
+  --pool-profile-emb data/embeddings/pool_profile_stratified.csv \
+  --pool-media-emb data/embeddings/pool_media_stratified.csv \
+  --seed-ids data/raw/03_seed_users_apr_may.csv \
+  --model-out data/models/fusion_classifier \
+  --pos-frac 0.1 --topk-pct 0.1
 
 .venv\Scripts\python.exe -m scoring.infer_supervised_lookalike \
-  --model-dir data/models/fusion_classifier_addi \
-  --target-profile-emb data/embeddings/user_profile_jun_new.csv \
-  --target-media-emb data/embeddings/media_sequence_jun_new.csv \
-  --output data/embeddings/supervised_lookalike_scored_jun.csv
+  --model-dir data/models/fusion_classifier \
+  --target-profile-emb data/embeddings/scoring_target_profile_jun.csv \
+  --target-media-emb data/embeddings/scoring_target_media_jun.csv \
+  --output data/embeddings/scored_jun.csv
 ```
 
-새 기간 신규 유저를 스코어링만 다시 할 땐(분류기 재학습 불필요) 두 번째 커맨드만
+학습 로그의 `val_recall@top10%`(검증셋 양성 중 상위 10% 안에 몇 %가 들어오는지)를 보고
+epoch/`--pos-frac`을 조정한다 — 표본이 작을 땐 `val_auc`만으로는 판단하기 어렵다.
+
+새 기간 스코어링 대상을 다시 스코어링만 할 땐(분류기 재학습 불필요) 두 번째 커맨드만
 `--target-*`/`--output`을 바꿔 반복하면 된다.
 
 옵션을 CLI 대신 JSON으로 관리하려면 `--config config/<이름>.json`을 쓴다
 (`config/train_supervised_lookalike.example.json`, `config/infer_supervised_lookalike.example.json`
 참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
 
-**성능(2026-07-07 파일럿, 6월 신규 유저 25,449명 기준)**: AUC 0.61, 최상위 10% lift **2.07x**
-(postback 라벨로 얕은 분류기(128→64→1) 추가 학습 필요).
+**성능(2026-07-09 재학습, docs/_archive/202607091610.md)**: val_auc 0.79~0.82, 6월 postback
+유저 269,914명 백테스트 상위 10% lift **1.60×**.
 
-### 2-4. 백테스트 (실제 postback이 쌓인 기간에만 가능)
+### 2-5. 백테스트 (전체 postback 유저 전환율 vs 스코어 상위 K% 전환율)
 
 ```
 .venv\Scripts\python.exe -m evaluation.backtest \
-  --scored data/embeddings/supervised_lookalike_scored_jun.csv --score-col lookalike_score --scored-id-col req_user_id \
-  --labels data/raw/06_postback_max_tier_jun.csv --label-col max_tier --label-id-col ifa --label-threshold 1 \
-  --id-map data/raw/05_new_users_user_profile_jun.csv --map-from-col req_user_id --map-to-col device_ifa \
-  --output data/embeddings/supervised_lookalike_scored_jun_backtest.csv
+  --scored data/embeddings/scored_jun.csv --score-col lookalike_score --scored-id-col req_user_id \
+  --labels data/raw/06_backtest_labels_jun.csv --label-col conv_matched_ip_any_cmp_any_window --label-id-col ifa --label-threshold 1 \
+  --id-map data/raw/07_scoring_target_profile_jun.csv --map-from-col req_user_id --map-to-col device_ifa \
+  --output data/embeddings/backtest_jun.csv \
+  --cumulative-output data/embeddings/backtest_jun_topk.csv
 ```
 
-`--label-threshold`: 1=T2(참여시작) 이상, 4=T3 이상, 6=T4(완료)만 — 몇 tier 이상을 "전환"으로
-볼지 조정.
-
-옵션을 CLI 대신 JSON으로 관리하려면 `--config config/<이름>.json`을 쓴다
-(`config/backtest.example.json` 참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
-
-### 2-5. 전환 정의 변경 백테스트 (postback 유저 IP 매칭, 실험 단계)
-
-기존 백테스트(2-4)는 "postback tier(T2+) 도달 여부"를 전환으로 본다. 여기서는 관점을 바꿔
-"postback 유저 중 실제 광고주 몰(`"prod_addi_conv".raw_conv_web`/`raw_conv_web_imp`) IP와
-매칭되는 유저 비율"을 전환으로 본다 — 자세한 배경/스키마 조사 과정은
-[`querys/addi_conv/README.md`](querys/addi_conv/README.md), 실험 결과 전체는
-[`docs/_archive/202607091533.md`](docs/_archive/202607091533.md) 참고.
-
-**아직 재학습 전 단계**: 기존(T2+ 시드로 학습된) 모델을 그대로 써서 새 라벨로 백테스트만
-해본 결과다. 신호는 있으나 약함(상위 10~30% lift 1.2~1.3배 수준) — 재학습하면 개선 여지가
-있다는 게 다음 단계(§2-3 재학습을 이 라벨로 다시 실행)의 동기다.
-
-```
-# 1) querys/addi_conv/09~11.sql을 Athena에서 실행, 결과 CSV를 data/raw/에 저장
-#    (09: 6월 postback 유저 IP 매칭 라벨, 10/11: 6월 postback 유저 전원의 프로필/미디어 방문)
-
-# 2) 임베딩 추출 (기존 모델 재사용, 재학습 없음)
-.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/10_postback_users_profile_jun.csv      --model-dir data/models/user_profile_addi_202604_05        --output data/embeddings/user_profile_postback_jun.csv
-.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/11_postback_users_media_visit_jun.csv  --model-dir data/models/media_sequence_addi_genre_202604_05 --output data/embeddings/media_sequence_postback_jun.csv
-
-# 3) 스코어링 (기존 fusion_classifier_addi 재사용)
-.venv\Scripts\python.exe -m scoring.infer_supervised_lookalike \
-  --model-dir data/models/fusion_classifier_addi \
-  --target-profile-emb data/embeddings/user_profile_postback_jun.csv \
-  --target-media-emb data/embeddings/media_sequence_postback_jun.csv \
-  --output data/embeddings/supervised_lookalike_scored_postback_jun.csv
-
-# 4) 백테스트 (라벨 = IP 매칭 여부)
-.venv\Scripts\python.exe -m evaluation.backtest \
-  --scored data/embeddings/supervised_lookalike_scored_postback_jun.csv --score-col lookalike_score --scored-id-col req_user_id \
-  --labels data/raw/09_postback_conv_match_jun_for_backtest.csv --label-col conv_matched_ip_any_cmp_any_window --label-id-col ifa --label-threshold 1 \
-  --id-map data/raw/10_postback_users_profile_jun.csv --map-from-col req_user_id --map-to-col device_ifa \
-  --output data/embeddings/postback_jun_backtest.csv \
-  --cumulative-output data/embeddings/postback_jun_backtest_topk.csv
-```
-
-`09_postback_conv_match_jun_for_backtest.sql`은 `label_col` 후보를 여러 개 뽑아둔다
+`06_backtest_labels_jun.sql`은 `label_col` 후보를 여러 개 뽑아둔다
 (`conv_matched_ip_cmp_any_window`는 cmp_no까지 요구해 정밀도는 높지만 양성이 30명뿐이라
 백테스트엔 표본이 부족함 — `conv_matched_ip_any_cmp_any_window`(IP만, 170명)를 기본으로 쓴다).
 
-### 2-6. 재학습 (IP 매칭 전환 라벨로, 극단적 불균형 대응 포함)
-
-2-5의 1차 백테스트로 "재학습할 가치가 있다"는 최소 신호를 확인한 뒤 실제로 적용한 단계
-(2026-07-09 실행 완료, 결과: 상위 10% lift 1.28× → **1.60×**로 개선 — 전체 수치·해석은
-[`docs/_archive/202607091610.md`](docs/_archive/202607091610.md) 참고). 두 가지
-문제를 먼저 풀어야 한다:
-
-1. **학습 pool의 5% 샘플링 문제** — 양성(IP+cmp_no 매칭, 4~5월 기준 412명)이 5% 샘플 안에는
-   대략 20명 정도만 남는다. 매칭 유저만 전수로 별도 조회해서 pool에 강제 병합한다
-   (`scoring.build_stratified_pool`).
-2. **극단적 불균형(양성 0.01~0.17%)** — `scoring.train_supervised_lookalike`에 층화
-   미니배치 샘플링(`--pos-frac`)과 라벨 층화 train/val 분할, PR-AUC·top-K% recall 리포트를
-   추가했다(코드 변경, 시드 자체는 그대로 넣으면 자동 적용됨).
-
-```
-# 1) querys/addi_conv/12~14.sql을 Athena에서 실행, 결과 CSV를 data/raw/에 저장
-#    (12: 4~5월 IP+cmp_no 매칭 유저 목록=새 시드 후보, 13/14: 그 유저들의 프로필/미디어 방문 전수 조회)
-
-# 2) 매칭 유저만 임베딩 추출 (기존 학습된 임베딩 모델 재사용, 재학습 아님)
-.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/13_conv_matched_users_profile_apr_may.csv     --model-dir data/models/user_profile_addi_202604_05        --output data/embeddings/user_profile_conv_matched_apr_may.csv
-.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/14_conv_matched_users_media_visit_apr_may.csv --model-dir data/models/media_sequence_addi_genre_202604_05 --output data/embeddings/media_sequence_conv_matched_apr_may.csv
-
-# 3) 기존 5% 샘플 pool에 병합 (음성은 5% 유지, 양성은 전수 포함)
-.venv\Scripts\python.exe -m scoring.build_stratified_pool \
-  --sampled-emb data/embeddings/user_profile_apr_may.csv \
-  --full-emb data/embeddings/user_profile_conv_matched_apr_may.csv \
-  --output data/embeddings/user_profile_apr_may_stratified.csv
-.venv\Scripts\python.exe -m scoring.build_stratified_pool \
-  --sampled-emb data/embeddings/media_sequence_apr_may.csv \
-  --full-emb data/embeddings/media_sequence_conv_matched_apr_may.csv \
-  --output data/embeddings/media_sequence_apr_may_stratified.csv
-
-# 4) 분류기 재학습 (시드 = 12번 쿼리 결과, pool = 3번에서 병합한 층화 pool)
-.venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
-  --pool-profile-emb data/embeddings/user_profile_apr_may_stratified.csv \
-  --pool-media-emb data/embeddings/media_sequence_apr_may_stratified.csv \
-  --seed-ids data/raw/12_conv_matched_users_apr_may.csv \
-  --model-out data/models/fusion_classifier_addi_conv_ip \
-  --pos-frac 0.1 --topk-pct 0.1
-```
-
-학습 로그의 `val_recall@top10%`(상위 10% 안에 검증셋 양성 중 몇 %가 들어오는지)를 보고
-epoch/`--pos-frac`을 조정한다 — 표본이 워낙 작아 `val_auc`만으로는 판단하기 어렵다. 재학습한
-모델로 §2-5의 4번 스코어링·백테스트 커맨드를 다시 돌려서(`--model-dir`을
-`fusion_classifier_addi_conv_ip`로 교체) `docs/_archive/202607091533.md`(1차)의 결과와
-비교한다 — 실행 결과는 `docs/_archive/202607091610.md`에 정리돼 있다.
+`--cumulative-output`은 "상위 10%/20%/.../100%를 타겟팅했다면"에 바로 대응하는 누적
+lift 표(`evaluation.backtest.cumulative_topk_summary`)를 만든다. 옵션을 CLI 대신 JSON으로
+관리하려면 `--config config/<이름>.json`을 쓴다(`config/backtest.example.json` 참고).
 
 ## 산출물 현황 요약
 
 | 산출물 | 위치 | 상태 |
 |---|---|---|
-| user_profile 임베딩 모델 | `data/models/user_profile_addi/` | 4~5월 59만 유저(5% 샘플), 30 epoch |
-| media_sequence 임베딩 모델 | `data/models/media_sequence_addi_genre/` | 4~5월 10만 유저(로컬 추가 샘플, 파일럿용), 5 epoch — 프로덕션 전환 시 전체/30epoch 재학습 권장 |
-| 지도학습 fusion 분류기 (T2+ 시드) | `data/models/fusion_classifier_addi/` | postback tier(T2+) 시드 라벨 기반, 20 epoch |
-| 지도학습 fusion 분류기 (IP 매칭 시드) | `data/models/fusion_classifier_addi_conv_ip/` | IP+cmp_no 매칭 전환 시드(§2-6), 층화 pool 425,043명(양성 388명), 20 epoch |
-| 6월 신규 유저 스코어 | `data/embeddings/supervised_lookalike_scored_jun.csv` | 25,449명 |
+| user_profile 임베딩 모델 | `data/models/user_profile_202604_05/` | 4~5월 59만 유저(5% 샘플), 30 epoch |
+| media_sequence 임베딩 모델 | `data/models/media_sequence_202604_05/` | 4~5월 10만 유저(로컬 추가 샘플, 파일럿용), 5 epoch — 프로덕션 전환 시 전체/30epoch 재학습 권장 |
+| 지도학습 fusion 분류기 | `data/models/fusion_classifier/` | IP+cmp_no 매칭 전환 시드, 층화 pool 425,043명(양성 388명), 20 epoch |
+| 6월 postback 유저 스코어 | `data/embeddings/scored_jun.csv` | 269,914명 |
+| 백테스트 결과 | `data/embeddings/backtest_jun.csv` / `backtest_jun_topk.csv` | 상위 10% lift 1.60× |
 
 ## 알려진 이슈 / 주의사항
 
@@ -254,12 +210,16 @@ epoch/`--pos-frac`을 조정한다 — 표본이 워낙 작아 `val_auc`만으�
   `abi_bid_log_flatten`에는 있음). 컬럼 존재 여부는 항상 실제 데이터로 먼저 확인할 것.
 - **`media`는 `app_bundle`이 아니라 `content_genre` 대표값** — addi는 CTV라 app_bundle이
   통신사 IPTV 앱 3종뿐이라 사실상 상수(다음-아이템 예측이 무의미해짐, loss가 0에서 안 움직임).
-  `content_genre`(115종)로 바꿔서 실제로 학습되는 모델이 됨. `querys/audience_embedding/01,04.sql`에
+  `content_genre`(115종)로 바꿔서 실제로 학습되는 모델이 됨. `querys/pipeline/01,02.sql`에
   이미 반영됨.
 - **`adspid`(광고 마스터 PK)와 `cmp_no`(로그 테이블 캠페인 ID)는 매핑이 없음** — 전수 조사로
   확인됨. 그래서 `addi_business`(광고주 정보)는 유저/캠페인 어느 쪽에도 못 붙임 — 광고주 속성
-  기반 two-tower 모델은 현재 데이터로 불가능.
+  기반 two-tower 모델은 현재 데이터로 불가능. 반면 `raw_conv_web(_imp).cmp_no`는 addi
+  cmp_no와 같은 ID 체계임을 확인(`docs/_archive/202607091533.md`).
 - **컴플라이언스 필터 필수**: `req_ext_allow_user_data_collection = '1'`만 포함(NULL/미채움 제외),
   `device_lmt = '1'`(옵트아웃) 제외. 모든 오디언스 쿼리에 이미 적용됨.
 - **Athena/Glue 타입 주의**: 숫자처럼 보이는 컬럼이 실제로는 `bigint`/`double`로 추론된 경우가
   많음 — 문자열 함수 쓰기 전엔 `CAST(col AS VARCHAR)`로 감쌀 것.
+- **극단적 클래스 불균형**: IP 매칭 전환 기준 양성 비율이 0.01~0.17% 수준으로 매우 낮다 —
+  `scoring.train_supervised_lookalike`의 `--pos-frac`/층화 train-val 분할이 이를 완화하지만,
+  `val_recall@top10%`가 epoch마다 크게 흔들릴 수 있다(검증셋 양성 자체가 수십 명 수준이라).
