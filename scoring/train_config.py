@@ -17,6 +17,8 @@ KNOWN_KEYS = {
     "num_epochs",
     "batch_size",
     "learning_rate",
+    "pos_frac",
+    "topk_pct",
 }
 
 
