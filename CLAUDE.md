@@ -8,12 +8,18 @@ Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference
 
 ## 프로젝트 목표
 
-특정 광고(cmp_no)에 관심 있는 사용자(디바이스) 리스트를 뽑고, 나아가 아직 postback(전환)이
-없는 신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를 임베딩 유사도로 찾아내는 것
-(파일럿 완료, 프로덕션 전환 전). `querys/audience_embedding/` 01~06.sql로 데이터를 만들고,
-`train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/스코어링/백테스트한다
-(`pipeline.run_all`로 한번에 실행도 가능, `README.md` §2-0). 모델 구조는
+특정 광고(cmp_no)에 반응(postback)한 유저 중, 실제로 광고주 몰(mall)에서 전환했을 가능성이
+높은 유저를 임베딩 기반 스코어링으로 가려내는 것. "전환"은 postback 유저의 IP가
+`"prod_addi_conv".raw_conv_web`/`raw_conv_web_imp`의 `mall_ip`와 매칭되는지로 판정한다
+(2026-07-09부터, 이전에는 postback tier 자체를 전환으로 봤음). `querys/pipeline/` 01~08.sql로
+데이터를 만들고, `train/`→`inference/`→`scoring/`→`evaluation/`로 학습/추론/스코어링/
+백테스트한다(`pipeline.run_all`로 한번에 실행도 가능, `README.md` §2-0). 모델 구조는
 `docs/model_architecture.md`, 실행 커맨드는 `README.md` 참고.
+
+원래는 "아직 postback 없는 신규 유저 중 과거 관심 유저와 행동이 비슷한 유저를 찾는"(신규
+유저 룩어라이크 타겟팅) 목적으로 시작한 프로젝트였다. 그 트랙(T2+ postback tier를 전환으로
+보는 시드/백테스트)은 삭제했다 — 필요해지면 같은 임베딩(재학습 불필요) 위에서 대상 모집단만
+바꿔 재구성하면 된다(과거 구현은 git 히스토리 참고, `README.md` 상단 안내 참고).
 
 ## 데이터를 얻는 방법 (이 repo에는 Athena 접근 권한이 없음)
 
@@ -65,9 +71,9 @@ Athena SQL(`querys/`)과 Python 모델 코드(`embedding/`, `train/`, `inference
 ## 문서
 
 - `README.md` — 전체 파이프라인 실행 커맨드 + 산출물 위치 (가장 먼저 볼 문서)
-- `docs/addi_raw_data_schema.md` — 원본(raw) Athena 4개 테이블 스키마
-- `docs/audience_embedding_data_schema.md` — `querys/audience_embedding/` 01~06.sql이 뽑는
-  가공된 산출물(파이프라인 입력 CSV) 스키마
+- `docs/addi_raw_data_schema.md` — 원본(raw) Athena 5개 테이블 스키마(addi 4개 + raw_conv_web(_imp))
+- `docs/pipeline_data_schema.md` — `querys/pipeline/` 01~08.sql이 뽑는 가공된 산출물
+  (파이프라인 입력 CSV) 스키마
 - `docs/model_architecture.md` — 임베딩 모델 구조/하이퍼파라미터, fusion/스코어링 방식 비교
 - `docs/output_analysis.md` — 백테스트 결과(그룹별 반응률/배율)를 비전공자도 읽을 수 있게
   설명한 문서. 새로 백테스트를 돌려 결과가 바뀌면 이 문서의 수치도 갱신할 것.
