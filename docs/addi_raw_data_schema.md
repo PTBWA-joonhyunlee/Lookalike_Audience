@@ -94,6 +94,33 @@ Glue 크롤러가 숫자처럼 보이는 값을 `double`/`bigint`로 추론해 �
 
 ---
 
+## 5. `"prod_addi_conv".raw_conv_web` / `raw_conv_web_imp` (광고주 몰 방문/전환 로그, 별도 카탈로그)
+
+`prod-ptbwa-dw`가 아니라 별도 Glue 데이터베이스(`prod_addi_conv`). addi 광고를 통해 광고주
+몰(mall)에 방문/전환한 이벤트 로그 — postback(광고 자체 반응)과 달리 광고주 쪽 트래킹이라
+유저 단위 식별자가 없고 `mall_ip`(방문자 IP)만 있다. 두 테이블 컬럼 구조는 동일, `_imp`만
+`imp_dt`(date) 컬럼이 추가로 있음(의미는 미확인).
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `cmp_no` | bigint | addi_bid_log_flatten/addi_postback_log와 **같은 ID 체계** (실측 확인: postback의 22개 cmp_no 중 13개가 겹침) |
+| `pid` | varchar | **유저 식별자가 아님** — cmp_no당 정확히 1개 값(캠페인 픽셀/게시물 토큰) |
+| `ev` | varchar | 이벤트 타입. 99.95%가 `page_view`(몰 방문), `order`(실구매)는 시스템 전체 ~60건뿐, 그 외 `cart`/`signup`/빈 문자열 극소량 |
+| `mall_dt` | varchar | 날짜(day 파티션과 동일해 보임) |
+| `post_datetime` | varchar | **신뢰 불가** — 같은 mall_dt 안에서도 몇 달씩 튀는 값 관측됨, 매칭에 쓰지 말 것 |
+| `mall_datetime` | varchar | `'YYYY-MM-DD HH:MI:SS'` 형식, 실제 이벤트 시각(매칭에 사용) |
+| `mall_ip` | varchar | 방문자 IP (IPv4). 유일한 유저 단위 조인 키 |
+| `cate` | varchar(4) | `Abi`/`ODM`/`Addi` 등 — 정확한 의미 미확인(추정: 유입 채널/픽셀 종류), cmp_no가 이미 addi 캠페인으로 좁혀지므로 매칭 시 추가 필터링은 안 함 |
+| `year`/`month`/`day` | varchar | 파티션 |
+
+행 수(전체, 파티션 무필터): `raw_conv_web` 119,683 / `raw_conv_web_imp` 47,648. postback의
+`ip`(addi_postback_log)와 `mall_ip`를 매칭해 "전환"을 판정한다 — 매칭 방식/신뢰도 조사
+과정은 [`_archive/202607091533.md`](_archive/202607091533.md), 실제 매칭 쿼리는
+[`../querys/pipeline/03_seed_users_apr_may.sql`](../querys/pipeline/03_seed_users_apr_may.sql)/
+[`06_backtest_labels_jun.sql`](../querys/pipeline/06_backtest_labels_jun.sql) 참고.
+
+---
+
 ## 테이블 관계
 
 ```
@@ -105,6 +132,6 @@ addi_bid_log_flatten ──(cmp_no, deal_id, media_id)── addi_postback_log  
 
 정합성 검증 세부 결과는 [`_archive/data_validation_report.md`](_archive/data_validation_report.md) 참고.
 
-이 문서는 원본(raw) Athena 테이블 스키마를 다룬다. `querys/audience_embedding/`의 SQL이
-뽑아내는 가공된 산출물(파이프라인 입력 CSV) 스키마는 [`audience_embedding_data_schema.md`](audience_embedding_data_schema.md)
+이 문서는 원본(raw) Athena 테이블 스키마를 다룬다. `querys/pipeline/`의 SQL이 뽑아내는
+가공된 산출물(파이프라인 입력 CSV) 스키마는 [`pipeline_data_schema.md`](pipeline_data_schema.md)
 참고.
