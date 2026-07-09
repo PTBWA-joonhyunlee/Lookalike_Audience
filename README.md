@@ -150,6 +150,46 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 옵션을 CLI 대신 JSON으로 관리하려면 `--config config/<이름>.json`을 쓴다
 (`config/backtest.example.json` 참고. 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선).
 
+### 2-5. 전환 정의 변경 백테스트 (postback 유저 IP 매칭, 실험 단계)
+
+기존 백테스트(2-4)는 "postback tier(T2+) 도달 여부"를 전환으로 본다. 여기서는 관점을 바꿔
+"postback 유저 중 실제 광고주 몰(`"prod_addi_conv".raw_conv_web`/`raw_conv_web_imp`) IP와
+매칭되는 유저 비율"을 전환으로 본다 — 자세한 배경/스키마 조사 과정은
+[`querys/addi_conv/README.md`](querys/addi_conv/README.md), 실험 결과 전체는
+[`docs/_archive/202607091533.md`](docs/_archive/202607091533.md) 참고.
+
+**아직 재학습 전 단계**: 기존(T2+ 시드로 학습된) 모델을 그대로 써서 새 라벨로 백테스트만
+해본 결과다. 신호는 있으나 약함(상위 10~30% lift 1.2~1.3배 수준) — 재학습하면 개선 여지가
+있다는 게 다음 단계(§2-3 재학습을 이 라벨로 다시 실행)의 동기다.
+
+```
+# 1) querys/addi_conv/09~11.sql을 Athena에서 실행, 결과 CSV를 data/raw/에 저장
+#    (09: 6월 postback 유저 IP 매칭 라벨, 10/11: 6월 postback 유저 전원의 프로필/미디어 방문)
+
+# 2) 임베딩 추출 (기존 모델 재사용, 재학습 없음)
+.venv\Scripts\python.exe -m inference.user_profile   --input data/raw/10_postback_users_profile_jun.csv      --model-dir data/models/user_profile_addi_202604_05        --output data/embeddings/user_profile_postback_jun.csv
+.venv\Scripts\python.exe -m inference.media_sequence --input data/raw/11_postback_users_media_visit_jun.csv  --model-dir data/models/media_sequence_addi_genre_202604_05 --output data/embeddings/media_sequence_postback_jun.csv
+
+# 3) 스코어링 (기존 fusion_classifier_addi 재사용)
+.venv\Scripts\python.exe -m scoring.infer_supervised_lookalike \
+  --model-dir data/models/fusion_classifier_addi \
+  --target-profile-emb data/embeddings/user_profile_postback_jun.csv \
+  --target-media-emb data/embeddings/media_sequence_postback_jun.csv \
+  --output data/embeddings/supervised_lookalike_scored_postback_jun.csv
+
+# 4) 백테스트 (라벨 = IP 매칭 여부)
+.venv\Scripts\python.exe -m evaluation.backtest \
+  --scored data/embeddings/supervised_lookalike_scored_postback_jun.csv --score-col lookalike_score --scored-id-col req_user_id \
+  --labels data/raw/09_postback_conv_match_jun_for_backtest.csv --label-col conv_matched_ip_any_cmp_any_window --label-id-col ifa --label-threshold 1 \
+  --id-map data/raw/10_postback_users_profile_jun.csv --map-from-col req_user_id --map-to-col device_ifa \
+  --output data/embeddings/postback_jun_backtest.csv \
+  --cumulative-output data/embeddings/postback_jun_backtest_topk.csv
+```
+
+`09_postback_conv_match_jun_for_backtest.sql`은 `label_col` 후보를 여러 개 뽑아둔다
+(`conv_matched_ip_cmp_any_window`는 cmp_no까지 요구해 정밀도는 높지만 양성이 30명뿐이라
+백테스트엔 표본이 부족함 — `conv_matched_ip_any_cmp_any_window`(IP만, 170명)를 기본으로 쓴다).
+
 ## 산출물 현황 요약
 
 | 산출물 | 위치 | 상태 |
