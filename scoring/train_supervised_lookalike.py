@@ -1,8 +1,8 @@
 # scoring/train_supervised_lookalike.py
 #
-# 첫 백테스트(addi_data_embedding docs/audience_embedding_plan.md §7-6)에서 시드 centroid
+# 첫 백테스트(docs/_archive/audience_embedding_plan_full.md §7-6)에서 시드 centroid
 # 코사인 유사도(unsupervised) 방식이 최하위 10%는 잘 걸러내지만 나머지 90% 안에서는 점수가
-# 순위를 못 매기는 문제가 확인됐다. 시드(과거 관심 유저) 여부를 1/0 라벨로 삼아 128차원 fused
+# 순위를 못 매기는 문제가 확인됐다. 시드(양성 라벨) 여부를 1/0 라벨로 삼아 128차원 fused
 # 임베딩(user_profile+media_sequence concat) 위에 작은 분류기를 지도학습시켜, "이 유저 프로필이
 # 시드와 얼마나 비슷한 패턴인가"를 직접 예측하게 한다 — centroid까지의 단일 방향 거리보다
 # 표현력이 높다(비선형 결합 가능).
@@ -24,10 +24,10 @@
 #
 # CLI:
 #   .venv\Scripts\python.exe -m scoring.train_supervised_lookalike \
-#     --pool-profile-emb data/embeddings/user_profile_apr_may.csv \
-#     --pool-media-emb data/embeddings/media_sequence_apr_may.csv \
-#     --seed-ids data/raw/03_seed_interested_users_apr_may.csv \
-#     --model-out data/models/fusion_classifier_addi
+#     --pool-profile-emb data/embeddings/pool_profile_stratified.csv \
+#     --pool-media-emb data/embeddings/pool_media_stratified.csv \
+#     --seed-ids data/raw/03_seed_users_apr_may.csv \
+#     --model-out data/models/fusion_classifier
 #
 # --config: 위 옵션들을 담은 JSON 설정 파일 (config/train_supervised_lookalike.example.json
 #   참고). 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선한다.

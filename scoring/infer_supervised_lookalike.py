@@ -6,10 +6,10 @@
 #
 # CLI:
 #   .venv\Scripts\python.exe -m scoring.infer_supervised_lookalike \
-#     --model-dir data/models/fusion_classifier_addi \
-#     --target-profile-emb data/embeddings/user_profile_jun_new.csv \
-#     --target-media-emb data/embeddings/media_sequence_jun_new.csv \
-#     --output data/embeddings/supervised_lookalike_scored_jun.csv
+#     --model-dir data/models/fusion_classifier \
+#     --target-profile-emb data/embeddings/scoring_target_profile_jun.csv \
+#     --target-media-emb data/embeddings/scoring_target_media_jun.csv \
+#     --output data/embeddings/scored_jun.csv
 #
 # --config: 위 옵션들을 담은 JSON 설정 파일 (config/infer_supervised_lookalike.example.json
 #   참고). 개별 CLI 옵션을 같이 주면 그 값이 config보다 우선한다.

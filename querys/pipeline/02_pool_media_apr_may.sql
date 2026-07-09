@@ -46,7 +46,7 @@ WITH raw_visit AS (
         NULLIF(CAST(app_content_genre AS VARCHAR), '') AS content_genre,
         NULLIF(CAST(imp_ad_type AS VARCHAR), '')  AS ad_type,
         -- device_connectiontype 컬럼 자체가 없어 전부 NULL로 출력 (embedding 코드와의 컬럼 계약 유지 목적).
-        -- <NA> 임베딩으로만 채워져 사실상 정보 없는 상수 피처가 됨 — docs/audience_embedding_plan.md 참고.
+        -- <NA> 임베딩으로만 채워져 사실상 정보 없는 상수 피처가 됨.
         CAST(NULL AS INTEGER) AS connection_type,
         CAST(from_iso8601_timestamp(CAST(created_at AS VARCHAR)) AT TIME ZONE 'Asia/Seoul' AS timestamp) AS ts,
         year
