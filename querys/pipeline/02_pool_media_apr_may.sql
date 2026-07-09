@@ -1,30 +1,26 @@
 -- ============================================================
--- 01_top500_media_visit.sql
--- 목적   : addi 오디언스 임베딩 파이프라인의 base 테이블이자 media_sequence(SASRec) 학습 입력.
---          원래 별도 저장소였던 user-to-ad-encoder 프로젝트(현재는 이 저장소에 합쳐짐,
---          README.md 참고)의 01_top500_media_visit.sql을 addi_bid_log_flatten 소스에 맞게
---          이식한 버전. 컬럼 이름/그레인을 원본과 동일하게 유지해 embedding/media_sequence
---          코드를 그대로 재사용할 수 있게 한다 (수정 없음).
+-- 02_pool_media_apr_may.sql
+-- 목적   : pool(4~5월 5% 샘플) 유저의 미디어 방문 이벤트 — media_sequence(SASRec) 학습 입력이자
+--          top500 미디어 vocab을 fit하는 기준 쿼리(이후 추론 단계는 이 vocab을 그대로 재사용,
+--          재필터링하지 않음).
 -- 소스   : prod-ptbwa-dw.addi_bid_log_flatten (원본은 abi_bid_log_flatten)
 -- 차이점 : 원본에는 없는 컴플라이언스 필터 추가 — docs/_archive/audience_list_project_full.md에서
 --          확정한 정책(동의 필터 req_ext_allow_user_data_collection='1', LMT 옵트아웃 제외)을
 --          그대로 적용. 이 프로젝트(addi)에서는 임베딩 대상도 "명시적으로 데이터 활용에 동의한
 --          유저"로 제한한다.
--- 범위   : 특정 캠페인(cmp_no)으로 한정하지 않음 — 신규 캠페인의 미노출/미전환 유저를 기존
---          "관심 사용자"(03_seed_interested_users_apr_may.sql 결과)와 유사도 비교하려면, 임베딩
---          자체는 전체 모수 기준 범용으로 만들어야 함 (캠페인 특정 필터는 다운스트림 유사도
---          스코어링 단계에서 적용).
+-- 범위   : 특정 캠페인(cmp_no)으로 한정하지 않음 — postback 유저 중 실제 전환 가능성이 높은
+--          유저를 가려내려면(03_seed_users_apr_may.sql이 시드), 임베딩 자체는 전체 모수 기준
+--          범용으로 만들어야 함(캠페인 특정 필터는 다운스트림 스코어링 단계에서 적용).
 -- 필터링 규칙: 같은 유저가 같은 미디어를 30분(1800초) 이내에 재방문하면 재방문 쪽을 버리고
---          세션 내 최초 이벤트만 남긴다 (원본과 동일 로직).
--- 기간   : 2026-04-01~2026-05-31 (학습 데이터) — docs/audience_embedding_plan.md §7 단기 목표.
---          02_user_profile.sql과 반드시 동일 기간 유지. 6월 신규 유저 스코어링 입력은
---          04_new_users_top500_media_visit_jun.sql이 따로 담당(이 파일과 top500 vocab이
---          어긋나면 안 되므로 재사용하지 않고 별도 쿼리로 분리).
+--          세션 내 최초 이벤트만 남긴다.
+-- 기간   : 2026-04-01~2026-05-31 (학습 데이터). 01_pool_profile_apr_may.sql과 반드시 동일 기간
+--          유지. 6월 스코어링 대상 입력은 08_scoring_target_media_jun.sql이 따로 담당(이
+--          파일과 top500 vocab이 어긋나면 안 되므로 재사용하지 않고 별도 쿼리로 분리).
 -- 샘플링 : 캠페인 무필터 2개월치라 데이터량이 너무 커서(7일 8,990만건 기준 2개월 환산 시
 --          7~8억 건대) 유저 단위 5% 샘플링을 추가했다. req_user_id 해시값 기준이라 같은
 --          유저는 항상 같은 샘플에 포함/제외되고(결정적), 기간을 다시 줄이는 대신 유저 수만
---          줄이므로 선택된 유저의 시퀀스 길이는 그대로 보존된다. 02_user_profile.sql과 반드시
---          동일한 샘플링 조건을 써야 두 임베딩이 같은 유저 집합을 가리킨다.
+--          줄이므로 선택된 유저의 시퀀스 길이는 그대로 보존된다. 01_pool_profile_apr_may.sql과
+--          반드시 동일한 샘플링 조건을 써야 두 임베딩이 같은 유저 집합을 가리킨다.
 -- media 컬럼 재정의 (2026-07-07): 원래 abi 원본처럼 app_bundle을 media(시퀀스 아이템)로 썼더니
 --          addi CTV 인벤토리는 app_bundle이 통신사 IPTV 앱 3종(SKB/KT/LGU+)뿐이라 vocab이
 --          거의 상수라 SASRec 다음-아이템 예측이 무의미해짐(학습 loss가 첫 epoch부터 0에 수렴,

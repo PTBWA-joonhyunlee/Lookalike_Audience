@@ -1,13 +1,13 @@
 -- ============================================================
--- 14_conv_matched_users_media_visit_apr_may.sql
--- 목적: 13번과 짝을 이루는 media_sequence 추론 입력 — 12번에서 뽑은 IP+cmp_no 매칭 유저의
---       미디어 방문 이벤트를 5% 샘플링 없이 전수 조회한다. 11_postback_users_media_visit_jun.sql
---       과 로직은 같고(top500 재필터링 없음 — 학습 때 fit된 vocab_media.json 재사용, 30분
---       재방문 세션 dedup 동일 적용) 대상 유저 목록과 기간(4~5월)만 다르다.
+-- 05_seed_media_apr_may.sql
+-- 목적: 04와 짝을 이루는 media_sequence 추론 입력 — 03에서 뽑은 시드 유저의 미디어 방문
+--       이벤트를 5% 샘플링 없이 전수 조회한다. 08_scoring_target_media_jun.sql과 로직은
+--       같고(top500 재필터링 없음 — 학습 때 fit된 vocab_media.json 재사용, 30분 재방문 세션
+--       dedup 동일 적용) 대상 유저 목록과 기간(4~5월)만 다르다.
 -- ============================================================
 
 WITH matched_ifa AS (
-  -- 12/13과 동일한 정의(중복 정의) — 12번 결과 CSV의 device_ifa와 같은 집합이어야 한다.
+  -- 03/04와 동일한 정의(중복 정의) — 03번 결과 CSV의 device_ifa와 같은 집합이어야 한다.
   SELECT DISTINCT ifa AS device_ifa
   FROM (
     WITH postback_ip AS (

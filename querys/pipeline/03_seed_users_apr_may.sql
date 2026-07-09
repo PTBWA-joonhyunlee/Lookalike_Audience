@@ -1,16 +1,11 @@
 -- ============================================================
--- 12_conv_matched_users_apr_may.sql
--- 목적: 재학습용 "층화 pool" 조립의 첫 단계 — 4~5월 postback 유저 중 IP+cmp_no 매칭된 유저
---       (양성 후보)의 req_user_id/device_ifa 목록. 08_postback_conv_match_sensitivity.sql은
---       개수만 셌는데(412명, IP+cmp_no, 무제한 시간창), 이번엔 실제 유저 목록이 필요하다 —
---       이 목록으로 13/14(전수 프로필/미디어 방문)를 뽑고, scoring.build_stratified_pool로
---       기존 5% 샘플 pool에 병합한다.
--- 매칭 정의: mall_ip=postback.ip AND cmp_no 일치, 시간창 제한 없음(08번 사전진단에서 확인된
---       조건 중 "IP+cmp_no, 무제한 시간창" — 학습 라벨은 백테스트보다 정밀도가 더 중요해서
---       cmp_no를 요구하되, 표본이 워낙 작아 시간창은 제한하지 않는다. 09/README §2-5와 같은
---       원칙).
--- 이 쿼리의 결과가 곧 03_seed_interested_users_apr_may.sql을 대체할 새 시드 후보다(아직 03
---       파일 자체는 안 바꿨음 — 검토 후 별도로 교체 예정).
+-- 03_seed_users_apr_may.sql
+-- 목적: 스코어링 분류기의 양성 라벨(시드) — 4~5월 postback 유저 중 IP+cmp_no 매칭된 유저의
+--       req_user_id/device_ifa 목록. 이 목록으로 04/05(전수 프로필/미디어 방문)를 뽑고,
+--       scoring.build_stratified_pool로 01/02(pool, 5% 샘플)에 병합한다.
+-- 매칭 정의: mall_ip=postback.ip AND cmp_no 일치, 시간창 제한 없음 — 학습 라벨은 백테스트보다
+--       정밀도가 더 중요해서 cmp_no를 요구하되, 표본이 워낙 작아 시간창은 제한하지 않는다.
+--       (사전 진단 히스토리는 docs/_archive/202607091533.md 참고)
 -- ============================================================
 
 WITH postback_ip AS (

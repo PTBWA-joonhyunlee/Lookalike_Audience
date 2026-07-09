@@ -1,11 +1,10 @@
 -- ============================================================
--- 11_postback_users_media_visit_jun.sql
--- 목적: 10_postback_users_profile_jun.sql과 짝을 이루는 media_sequence 추론 입력 —
---       2026-06 postback 발생 유저 전원의 미디어 방문 이벤트. 04_new_users_top500_media_visit_
---       jun.sql과 로직은 동일(top500 재필터링 없음 — 학습 때 fit된 vocab_media.json 사용,
---       30분 재방문 세션 dedup 동일 적용)하되, "신규 유저" 제한과 5% 샘플링을 뺐다
---       (10번 파일 상단 주석과 같은 이유).
--- media 컬럼은 01/04와 동일하게 app_bundle이 아니라 app_content_genre 대표(첫) 장르 토큰.
+-- 08_scoring_target_media_jun.sql
+-- 목적: 07_scoring_target_profile_jun.sql과 짝을 이루는 media_sequence 추론 입력 —
+--       2026-06 postback 발생 유저 전원의 미디어 방문 이벤트. top500 재필터링 없음(학습 때
+--       fit된 vocab_media.json 사용), 30분 재방문 세션 dedup은 pool과 동일 적용. 5% 샘플링
+--       없음(07번 파일 상단 주석과 같은 이유).
+-- media 컬럼은 01/02와 동일하게 app_bundle이 아니라 app_content_genre 대표(첫) 장르 토큰.
 -- ============================================================
 
 WITH postback_ifa AS (

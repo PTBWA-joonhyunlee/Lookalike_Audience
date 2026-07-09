@@ -1,12 +1,10 @@
 -- ============================================================
--- 10_postback_users_profile_jun.sql
--- 목적: "전체 postback 유저 vs score 상위 10~100%" 백테스트를 하려면 룩어라이크 후보군이 아니라
---       2026-06 postback이 발생한 유저 전원을 스코어링해야 한다(09_postback_conv_match_jun_for_
---       backtest.sql의 라벨과 같은 모집단). 그 스코어링 입력(user_profile 추론용)을 여기서 뽑는다.
---       05_new_users_user_profile_jun.sql과 컬럼 계약은 동일하지만: (1) "신규 유저"(04-05월에
---       없던 유저) 제한 없음 — postback 유저는 정의상 이미 참여한 유저라 신규 개념이 안 맞음,
---       (2) 5% 샘플링 없음 — postback 유저 집합 자체가 이미 작아서(30만 명) 전수 조회해도
---       Athena 부담이 크지 않음.
+-- 07_scoring_target_profile_jun.sql
+-- 목적: "전체 postback 유저 vs score 상위 10~100%" 백테스트를 하려면 2026-06 postback이 발생한
+--       유저 전원을 스코어링해야 한다(06_backtest_labels_jun.sql의 라벨과 같은 모집단). 그
+--       스코어링 입력(user_profile 추론용)을 여기서 뽑는다. 01_pool_profile_apr_may.sql과
+--       컬럼 계약은 동일하지만 5% 샘플링 없음 — postback 유저 집합 자체가 이미 작아서(30만 명)
+--       전수 조회해도 Athena 부담이 크지 않음.
 -- 대상  : addi_postback_log(ifa) 2026-06 발생 유저를 addi_bid_log_flatten(device_ifa)에서
 --       최신(06월 기준) 프로필 행으로 매칭. postback은 bid 노출을 전제로 하므로 06월 bid log에
 --       존재해야 정상 — 없으면(비정상 케이스) 결과에서 자동 제외된다(임베딩 입력이 없으므로).

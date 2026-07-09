@@ -1,15 +1,15 @@
 -- ============================================================
--- 13_conv_matched_users_profile_apr_may.sql
--- 목적: 12번에서 뽑은 IP+cmp_no 매칭 유저(양성 후보, ~412명)의 프로필을 5% 샘플링 없이
---       전수 조회한다(02_user_profile.sql과 컬럼 계약 동일). 10_postback_users_profile_jun.sql
---       과 로직은 같고 대상 유저 목록과 기간(4~5월)만 다르다.
+-- 04_seed_profile_apr_may.sql
+-- 목적: 03에서 뽑은 시드 유저(양성 후보, ~412명)의 프로필을 5% 샘플링 없이 전수 조회한다
+--       (01_pool_profile_apr_may.sql과 컬럼 계약 동일). 07_scoring_target_profile_jun.sql과
+--       로직은 같고 대상 유저 목록과 기간(4~5월)만 다르다.
 -- 다음 단계: 이 CSV로 inference.user_profile을 돌려 임베딩을 뽑고,
---       scoring.build_stratified_pool로 기존 user_profile_apr_may.csv(5% 샘플)에 병합한다.
+--       scoring.build_stratified_pool로 pool_profile.csv(5% 샘플)에 병합한다.
 -- ============================================================
 
 WITH matched_ifa AS (
-  -- 12_conv_matched_users_apr_may.sql 결과를 그대로 다시 씀(별도 테이블로 안 쌓아두므로 중복
-  -- 정의) — 12번 쿼리 결과 CSV의 device_ifa 컬럼과 동일한 집합이어야 한다.
+  -- 03_seed_users_apr_may.sql 결과를 그대로 다시 씀(별도 테이블로 안 쌓아두므로 중복
+  -- 정의) — 03번 쿼리 결과 CSV의 device_ifa 컬럼과 동일한 집합이어야 한다.
   SELECT DISTINCT ifa AS device_ifa
   FROM (
     WITH postback_ip AS (
