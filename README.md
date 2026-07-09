@@ -192,9 +192,10 @@ train(분류기 학습, 아티팩트 저장) / inference(저장된 분류기로 
 
 ### 2-6. 재학습 (IP 매칭 전환 라벨로, 극단적 불균형 대응 포함)
 
-2-5의 1차 백테스트로 "재학습할 가치가 있다"는 최소 신호를 확인한 뒤의 단계. 두 가지 문제를
-먼저 풀어야 한다(배경은 [`docs/_archive/202607091533.md`](docs/_archive/202607091533.md) "다음
-단계" 참고):
+2-5의 1차 백테스트로 "재학습할 가치가 있다"는 최소 신호를 확인한 뒤 실제로 적용한 단계
+(2026-07-09 실행 완료, 결과: 상위 10% lift 1.28× → **1.60×**로 개선 — 전체 수치·해석은
+[`docs/_archive/202607091533.md`](docs/_archive/202607091533.md) "4. 재학습" 참고). 두 가지
+문제를 먼저 풀어야 한다:
 
 1. **학습 pool의 5% 샘플링 문제** — 양성(IP+cmp_no 매칭, 4~5월 기준 412명)이 5% 샘플 안에는
    대략 20명 정도만 남는다. 매칭 유저만 전수로 별도 조회해서 pool에 강제 병합한다
@@ -242,7 +243,8 @@ epoch/`--pos-frac`을 조정한다 — 표본이 워낙 작아 `val_auc`만으�
 |---|---|---|
 | user_profile 임베딩 모델 | `data/models/user_profile_addi/` | 4~5월 59만 유저(5% 샘플), 30 epoch |
 | media_sequence 임베딩 모델 | `data/models/media_sequence_addi_genre/` | 4~5월 10만 유저(로컬 추가 샘플, 파일럿용), 5 epoch — 프로덕션 전환 시 전체/30epoch 재학습 권장 |
-| 지도학습 fusion 분류기 | `data/models/fusion_classifier_addi/` | 시드 라벨 기반, 20 epoch |
+| 지도학습 fusion 분류기 (T2+ 시드) | `data/models/fusion_classifier_addi/` | postback tier(T2+) 시드 라벨 기반, 20 epoch |
+| 지도학습 fusion 분류기 (IP 매칭 시드) | `data/models/fusion_classifier_addi_conv_ip/` | IP+cmp_no 매칭 전환 시드(§2-6), 층화 pool 425,043명(양성 388명), 20 epoch |
 | 6월 신규 유저 스코어 | `data/embeddings/supervised_lookalike_scored_jun.csv` | 25,449명 |
 
 ## 알려진 이슈 / 주의사항
