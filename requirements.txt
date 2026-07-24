@@ -3,3 +3,4 @@
 numpy>=1.26.0
 pandas>=2.0.0
 tqdm>=4.66.0
+sentence-transformers>=3.0.0   # embedding/segment_features의 세그먼트 BERT lookup용
