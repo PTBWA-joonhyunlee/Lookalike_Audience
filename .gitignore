@@ -12,13 +12,10 @@ __pycache__/
 *.pyc
 
 # Local config (may contain machine-specific paths) - example files are tracked explicitly
-config/*
-!config/train_config.example.json
-!config/inference_config.example.json
-!config/train_supervised_lookalike.example.json
-!config/infer_supervised_lookalike.example.json
-!config/backtest.example.json
-!config/pipeline.example.json
+seed/config/*
+!seed/config/train_config.example.json
+postback/config/*
+!postback/config/train_config.example.json
 
 # OS cruft
 .DS_Store

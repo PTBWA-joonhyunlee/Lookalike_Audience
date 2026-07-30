@@ -1,6 +1,0 @@
-{
-  "_comment": "cp config/inference_config.example.json config/<이름>.json 으로 복사해서 값을 채운 뒤 python -m inference.<모듈> --config config/<이름>.json 으로 사용한다. config/inference_config.example.json을 제외한 config/ 아래 파일은 .gitignore되어 커밋되지 않는다.",
-  "dataset_path": "data/user_profile_new.csv",
-  "output_path": "data/embeddings/user_profile_scored.csv",
-  "model_dir": "data/models/user_profile"
-}
