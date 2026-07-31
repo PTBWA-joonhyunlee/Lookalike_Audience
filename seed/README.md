@@ -12,6 +12,9 @@
 cd seed
 ..\.venv\Scripts\python.exe -m embedding.segment_features.build_features
 ..\.venv\Scripts\python.exe -m train.segment_features
+..\.venv\Scripts\python.exe -m inference.segment_features
+..\.venv\Scripts\python.exe -m scoring.train_lookalike
+..\.venv\Scripts\python.exe -m scoring.infer_lookalike --top-pct 10
 ```
 
 ## 폴더 구조
@@ -25,10 +28,15 @@ embedding/
   segment_features/  skp 세그먼트 임베딩(Autoencoder) 모델 정의
 train/
   segment_features.py   위 모델 학습 스크립트
-inference/         (아직 비어있음 — 학습된 모델로 임베딩 추출하는 스크립트 예정)
+inference/
+  segment_features.py   학습된 모델로 임베딩(z) 추출 스크립트
+scoring/
+  config.py/model.py/dataset.py   지도학습 lookalike 분류기 정의
+  train_lookalike.py    seed=1/pool=0으로 분류기 학습
+  infer_lookalike.py    candidate 스코어링 + 상위 후보 추출
 config/
   train_config.example.json
 docs/
   README.md              실행 순서 + 현재 산출물 + 설계 결정
-  model_architecture.md  모델 구조 스펙
+  model_architecture.md  모델 구조 스펙 + 스코어링 파이프라인
 ```

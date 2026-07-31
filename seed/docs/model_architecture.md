@@ -76,6 +76,33 @@ residence/product/content/etc_idx                 ├─ concat(89dim) → Linea
 `segment_bert_lookup.npz`/`age_bracket_vocab.json`을 먼저 만든 뒤,
 `python -m train.segment_features`로 학습한다(`seed/`에서 실행, `seed/README.md` 참고).
 
+## 스코어링 파이프라인 (2026-07-30, MVP: segment 임베딩만)
+
+profile/media 임베딩 모델이 아직 없어서(아래 "다음 단계" 참고), 우선 segment_features
+임베딩 하나만으로 지도학습 lookalike 스코어링을 구성했다 — profile/media가 생기면 §3
+방식(concat 후 지도학습)으로 그대로 확장할 수 있는 자리를 남겨뒀다.
+
+```
+1) inference/segment_features.py
+   model.pt(encoder) 실행 → segment_features.npz 전체(5,710,059명, seed+pool+candidate
+   구분 없이 합쳐짐)의 z(32dim) → data/models/segment_features/segment_embeddings.csv
+
+2) scoring/train_lookalike.py
+   위 임베딩 CSV를 04c_seed_segment.csv(seed, label=1)/05c_pool_segment.csv(pool, label=0)
+   의 device_ifa로 필터링 → LookalikeClassifier(Linear(32→32)→ReLU→Dropout→Linear(32→1))
+   를 BCEWithLogitsLoss로 학습 → data/models/lookalike_classifier/model.pt
+   (seed/pool이 약 250만:255만으로 비슷한 규모라 addi처럼 층화 샘플링/pos_weight 불필요)
+
+3) scoring/infer_lookalike.py
+   같은 임베딩 CSV를 07c_candidate_segment.csv(2026-06 candidate, 66만 명)의 device_ifa로
+   필터링 → 학습된 분류기로 lookalike_score 계산 → 점수 내림차순 정렬 →
+   candidate_scores.csv(전체) + candidate_scores_top{N}pct.csv(상위 N%) 저장
+```
+
+`scoring/config.py`가 이 세 스크립트가 공유하는 경로/하이퍼파라미터를 담는다. 실행은 전부
+`seed/`에서 `python -m inference.segment_features` → `python -m scoring.train_lookalike`
+→ `python -m scoring.infer_lookalike --top-pct 10` 순서.
+
 ## 다음 단계 / 아직 없는 것
 
 - **profile/media 임베딩 모델이 없음**: `seed/queries/04a/05a/07a`(profile), `04b/05b/07b`
@@ -83,7 +110,9 @@ residence/product/content/etc_idx                 ├─ concat(89dim) → Linea
   `embedding/user_profile`/`embedding/media_sequence`에 해당)이 propfit 스키마용으로는 아직
   없다. `02_user_media.sql`은 addi와 달리 `content_genre`가 비어 있어 `inventory_type`
   (app/site)을 대신 넣는 등 입력 계약이 다르므로 그대로 재사용 불가 — 새로 설계 필요.
-- **`inference/segment_features.py`가 없음**: 학습(`train/segment_features.py`)까지만 있고,
-  학습된 모델로 재학습 없이 임베딩을 뽑는 추론 스크립트가 아직 없다.
-- **fusion + 스코어링 방식 미정**: profile/media 임베딩이 생기면 segment_features와 어떻게
-  합칠지(단순 concat vs 게이팅), 지도학습 분류기를 어떤 라벨(seed=양성)로 학습할지 설계 필요.
+  생기면 위 스코어링 파이프라인의 입력을 segment(32dim) 단독에서 concat(segment+profile+media)
+  으로 확장하면 된다(`scoring/config.py`의 `EMBED_DIM`/`EMBED_COLS`만 바꾸는 정도).
+- **후보 리스트의 실제 검증 라벨이 없음**: candidate는 아직 전환 여부를 모르는 진짜 신규
+  유저라(정의상 그럼) `val_auc`(seed vs pool 구분 성능)로만 모델을 검증했다 — 이게 실제
+  candidate lookalike 순위를 얼마나 잘 매기는지는 추후 캠페인 집행 후 `ab_postback_log`로
+  확인해야 한다(README.md의 "신규" 정의 참고).
