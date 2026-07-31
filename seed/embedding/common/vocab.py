@@ -26,6 +26,16 @@ class CategoryVocab:
     @classmethod
     def build(cls, values: Iterable, min_freq: int = 1, max_size: Optional[int] = None) -> "CategoryVocab":
         counter: Counter = Counter(cls._normalize(v) for v in values)
+        return cls.build_from_counter(counter, min_freq, max_size)
+
+    @classmethod
+    def build_from_counter(
+        cls, counter: Counter, min_freq: int = 1, max_size: Optional[int] = None
+    ) -> "CategoryVocab":
+        """이미 정규화된 토큰의 Counter로 vocab을 만든다 — media_sequence처럼 CSV를
+        청크 단위로 스트리밍하며 Counter를 누적한 뒤(전체를 메모리에 올리지 않고)
+        한 번에 vocab을 확정해야 할 때 build() 대신 쓴다."""
+        counter = Counter(counter)
         # <NA>/<UNK>는 실제 값 빈도와 무관하게 항상 고정 인덱스로 포함시킨다.
         counter.pop(NA_TOKEN, None)
         counter.pop(UNK_TOKEN, None)

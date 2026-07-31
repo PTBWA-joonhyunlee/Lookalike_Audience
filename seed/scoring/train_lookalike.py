@@ -1,12 +1,14 @@
 # seed/scoring/train_lookalike.py
 #
-# segment 임베딩(32dim)만으로 seed=1/pool=0 지도학습 분류기를 학습한다. addi 트랙의
-# scoring/train_supervised_lookalike.py에 해당하는 자리 — 다만 이번엔 seed/pool 규모가
-# 비슷해서(약 250만 vs 255만, addi처럼 양성이 0.01% 수준으로 희소하지 않음) 층화
-# 미니배치 샘플링이나 pos_weight 없이 단순 셔플 + train/val 분할로 충분하다.
+# segment/media/combined 임베딩(config.VARIANTS)으로 seed=1/pool=0 지도학습 분류기를
+# 학습한다. addi 트랙의 scoring/train_supervised_lookalike.py에 해당하는 자리 —
+# 다만 이번엔 seed/pool 규모가 비슷해서(약 250만 vs 255만, addi처럼 양성이 0.01% 수준으로
+# 희소하지 않음) 층화 미니배치 샘플링이나 pos_weight 없이 단순 셔플 + train/val 분할로
+# 충분하다.
 #
-# 실행 전 준비: inference.segment_features로 임베딩 CSV를 먼저 만들어야 한다.
-# 실행(seed/ 안에서 cd 후): ..\.venv\Scripts\python.exe -m scoring.train_lookalike
+# 실행 전 준비: --variant segment는 inference.segment_features, --variant media/combined는
+# inference.media_sequence(도 같이)로 임베딩 CSV를 먼저 만들어야 한다.
+# 실행(seed/ 안에서 cd 후): ..\.venv\Scripts\python.exe -m scoring.train_lookalike --variant segment
 
 import argparse
 
@@ -22,6 +24,7 @@ from .model import LookalikeClassifier
 
 
 def train(
+    variant: config.Variant,
     num_epochs: int = config.NUM_EPOCHS,
     batch_size: int = config.BATCH_SIZE,
     lr: float = config.LEARNING_RATE,
@@ -30,16 +33,16 @@ def train(
     seed: int = 42,
 ) -> None:
     device = resolve_device(device)
-    print(f"[INFO] device={device}")
+    print(f"[INFO] variant={variant.name} device={device}")
 
-    print(f"[INFO] 임베딩 로드: {config.EMBEDDINGS_CSV}")
-    embeddings = load_embeddings()
+    print(f"[INFO] 임베딩 로드: {[str(p) for p, _ in variant.sources]}")
+    embeddings = load_embeddings(variant)
     labeled = build_labeled_frame(embeddings)
     n_pos = int(labeled["label"].sum())
     n_neg = len(labeled) - n_pos
-    print(f"[INFO] 학습 대상: {len(labeled)}명 (seed={n_pos}, pool={n_neg})")
+    print(f"[INFO] 학습 대상: {len(labeled)}명 (seed={n_pos}, pool={n_neg}, embed_dim={variant.embed_dim})")
 
-    dataset = EmbeddingLabelDataset(labeled)
+    dataset = EmbeddingLabelDataset(labeled, variant.embed_cols)
     n = len(dataset)
     rng = np.random.default_rng(seed)
     perm = rng.permutation(n)
@@ -49,7 +52,7 @@ def train(
     train_loader = DataLoader(Subset(dataset, train_idx), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(Subset(dataset, val_idx), batch_size=batch_size, shuffle=False)
 
-    model = LookalikeClassifier(config.EMBED_DIM, config.HIDDEN_DIM, config.DROPOUT).to(device)
+    model = LookalikeClassifier(variant.embed_dim, config.HIDDEN_DIM, config.DROPOUT).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.BCEWithLogitsLoss()
 
@@ -78,13 +81,14 @@ def train(
         val_auc = roc_auc_score(val_labels, val_scores)
         print(f"[epoch {epoch}/{num_epochs}] train_loss={train_loss:.4f} val_auc={val_auc:.4f}")
 
-    config.ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), config.MODEL_PATH)
-    print(f"[INFO] 모델 저장: {config.MODEL_PATH}")
+    variant.artifact_dir.mkdir(parents=True, exist_ok=True)
+    torch.save(model.state_dict(), variant.model_path)
+    print(f"[INFO] 모델 저장: {variant.model_path}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="segment 임베딩 기반 lookalike 분류기 학습")
+    parser = argparse.ArgumentParser(description="segment/media/combined 임베딩 기반 lookalike 분류기 학습")
+    parser.add_argument("--variant", choices=list(config.VARIANTS), default="segment")
     parser.add_argument("--epochs", type=int, default=config.NUM_EPOCHS)
     parser.add_argument("--batch-size", type=int, default=config.BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=config.LEARNING_RATE)
@@ -92,7 +96,7 @@ def main():
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
 
-    train(num_epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
+    train(config.VARIANTS[args.variant], num_epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
           val_split=args.val_split, device=args.device)
 
 
