@@ -25,7 +25,9 @@
 #
 # 실행(seed/ 안에서 cd 후): ..\.venv\Scripts\python.exe -m embedding.media_sequence.build_features
 
+import argparse
 import glob as globmod
+import os
 from collections import Counter, defaultdict
 
 import numpy as np
@@ -139,19 +141,49 @@ def build(paths, media_vocab, inventory_vocab, ad_type_vocab, connection_type_vo
 
 
 def main():
-    paths = _source_paths()
+    parser = argparse.ArgumentParser(
+        description="media CSV -> device_ifa별 인코딩 시퀀스(media_features.npz). "
+        "기본값(인자 없음)은 DATA_GLOB 전체를 스캔해 vocab을 새로 적합한다(최초 학습용)."
+    )
+    parser.add_argument(
+        "--input", nargs="+",
+        help="처리할 특정 CSV 경로(들). 생략 시 DATA_DIR/DATA_GLOB 전체를 스캔",
+    )
+    parser.add_argument(
+        "--output", help=f"결과 npz 저장 경로 (생략 시 기본값: {config.FEATURES_NPZ_PATH})",
+    )
+    parser.add_argument(
+        "--reuse-vocab", action="store_true",
+        help="이미 학습에 쓴 vocab(vocab_media.json 등)을 그대로 불러와 재사용하고 새로 적합하지 "
+        "않는다 — 학습된 모델과 item 인덱스가 어긋나면 안 되는 '추론 전용 증분 처리'(예: 새 "
+        "candidate 집단 추가)에 쓴다. 지정하면 vocab 파일도 덮어쓰지 않는다.",
+    )
+    args = parser.parse_args()
+
+    paths = args.input or _source_paths()
     print(f"[INFO] 대상 파일: {paths}")
 
-    media_vocab, inventory_vocab, ad_type_vocab, connection_type_vocab = fit_vocabs(paths)
+    if args.reuse_vocab:
+        media_vocab = CategoryVocab.load(config.MEDIA_VOCAB_PATH)
+        inventory_vocab = CategoryVocab.load(config.INVENTORY_TYPE_VOCAB_PATH)
+        ad_type_vocab = CategoryVocab.load(config.AD_TYPE_VOCAB_PATH)
+        connection_type_vocab = CategoryVocab.load(config.CONNECTION_TYPE_VOCAB_PATH)
+        print("[INFO] 기존 vocab 재사용(적합 생략)")
+    else:
+        media_vocab, inventory_vocab, ad_type_vocab, connection_type_vocab = fit_vocabs(paths)
+
     features = build(paths, media_vocab, inventory_vocab, ad_type_vocab, connection_type_vocab)
 
-    config.ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    media_vocab.save(config.MEDIA_VOCAB_PATH)
-    inventory_vocab.save(config.INVENTORY_TYPE_VOCAB_PATH)
-    ad_type_vocab.save(config.AD_TYPE_VOCAB_PATH)
-    connection_type_vocab.save(config.CONNECTION_TYPE_VOCAB_PATH)
-    np.savez(config.FEATURES_NPZ_PATH, **features)
-    print(f"[INFO] {len(features[config.ID_COL]):,}개 디바이스 -> {config.FEATURES_NPZ_PATH}")
+    output_path = args.output or config.FEATURES_NPZ_PATH
+    os.makedirs(os.path.dirname(str(output_path)) or ".", exist_ok=True)
+    if not args.reuse_vocab:
+        config.ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+        media_vocab.save(config.MEDIA_VOCAB_PATH)
+        inventory_vocab.save(config.INVENTORY_TYPE_VOCAB_PATH)
+        ad_type_vocab.save(config.AD_TYPE_VOCAB_PATH)
+        connection_type_vocab.save(config.CONNECTION_TYPE_VOCAB_PATH)
+    np.savez(output_path, **features)
+    print(f"[INFO] {len(features[config.ID_COL]):,}개 디바이스 -> {output_path}")
 
 
 if __name__ == "__main__":

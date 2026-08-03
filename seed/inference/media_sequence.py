@@ -46,15 +46,17 @@ def load_model(device: torch.device, model_path=None) -> SASRec:
     return model
 
 
-def run(output_path: str = None, batch_size: int = 4096, device: str = "auto", model_path=None) -> None:
+def run(output_path: str = None, batch_size: int = 4096, device: str = "auto", model_path=None, input_path=None) -> None:
     device = resolve_device(device)
     print(f"[INFO] device={device}")
 
     model_path = model_path or config.MODEL_PATH
     print(f"[INFO] 모델 로드: {model_path}")
     model = load_model(device, model_path)
+    input_path = input_path or config.FEATURES_NPZ_PATH
+    print(f"[INFO] 입력 npz: {input_path}")
     dataset = MediaSequenceInferenceDataset(
-        config.FEATURES_NPZ_PATH, max_len=config.MAX_SEQ_LEN, min_len=config.MIN_SEQ_LEN
+        input_path, max_len=config.MAX_SEQ_LEN, min_len=config.MIN_SEQ_LEN
     )
     print(f"[INFO] 이벤트 {config.MIN_SEQ_LEN}개 미만 제외 후 임베딩 대상: {len(dataset):,}개 디바이스")
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
@@ -84,11 +86,12 @@ def run(output_path: str = None, batch_size: int = 4096, device: str = "auto", m
 def main():
     parser = argparse.ArgumentParser(description="학습된 media_sequence(SASRec)로 재학습 없이 임베딩을 뽑는다.")
     parser.add_argument("--output", help=f"결과 CSV 저장 경로 (생략 시 기본값: {config.ARTIFACT_DIR / 'media_embeddings.csv'})")
+    parser.add_argument("--input", help=f"입력 npz 경로 (생략 시 기본값: {config.FEATURES_NPZ_PATH}, build_features.py --reuse-vocab로 만든 증분 npz도 가능)")
     parser.add_argument("--model-path", help=f"모델 체크포인트 경로 (생략 시 기본값: {config.MODEL_PATH}, 마지막 epoch)")
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
-    run(output_path=args.output, batch_size=args.batch_size, device=args.device, model_path=args.model_path)
+    run(output_path=args.output, batch_size=args.batch_size, device=args.device, model_path=args.model_path, input_path=args.input)
 
 
 if __name__ == "__main__":
