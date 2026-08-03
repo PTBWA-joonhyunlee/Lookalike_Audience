@@ -7,6 +7,11 @@
 
    이 후보군은 segment/combined 스코어링은 하지 않기로 했다(06c 헤더 참고) — media 단독
    임베딩/스코어링에만 쓴다.
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고.
+   06b에서 이미 region=KR/OS=Android로 후보(candidates_202606_media)를 제한했지만,
+   이 쿼리도 독립적으로 같은 조건을 명시해 다른 candidate 테이블에 재사용될 때도
+   안전하게 한다.
    ============================================================ */
 
 WITH raw_visit AS (
@@ -33,6 +38,8 @@ WITH raw_visit AS (
       AND v.req_user_id IS NOT NULL AND trim(CAST(v.req_user_id AS VARCHAR)) <> ''
       AND CAST(v.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (v.device_lmt IS NULL OR CAST(v.device_lmt AS VARCHAR) <> '1')
+      AND CAST(v.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(v.device_osv AS VARCHAR), '^[0-9]+$')
 ),
 top500 AS (
     SELECT

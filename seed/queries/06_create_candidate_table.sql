@@ -24,6 +24,10 @@
 
    **재실행 필요**: 07(이 파일), 08a, 08b, 08c 전부 — 후보 모집단이 바뀌었으므로.
    기존 candidates_202606이 있다면 DROP TABLE 후 재생성할 것.
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
+   pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
+   후보 모집단 자체를 region=KR AND OS=Android로 제한한다.
    ============================================================ */
 
 CREATE TABLE candidates_202606
@@ -53,4 +57,6 @@ WHERE b.year = '2026' AND b.month = '06'
   AND regexp_like(CAST(b.device_ifa AS VARCHAR), '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
   AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
   AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
-  AND sd.device_ifa IS NULL;
+  AND sd.device_ifa IS NULL
+  AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
+  AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$');

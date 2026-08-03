@@ -23,6 +23,11 @@
 #   배열로 저장한다 — dataset.py가 각 디바이스 실제 길이만큼만 잘라 next-item 쌍을 만들어야
 #   해서(길이가 제각각), 고정폭으로 미리 패딩해두면 오히려 그 작업을 다시 풀어야 한다.
 #
+# 2026-08-03 추가: time_of_day_ids(3시간 단위 절대 시간대, config.TIME_OF_DAY_VOCAB_SIZE)/
+#   time_gap_ids(TiSASRec 스타일 직전 이벤트와의 간격 버킷, config.TIME_GAP_VOCAB_SIZE)도
+#   같은 방식(디바이스별 가변 길이)으로 함께 저장한다 — model.py가 position_embedding을
+#   time_gap 기반으로 재정의하고 time_of_day를 새 side feature로 쓴다.
+#
 # 실행(seed/ 안에서 cd 후): ..\.venv\Scripts\python.exe -m embedding.media_sequence.build_features
 
 import argparse
@@ -46,6 +51,24 @@ USE_COLS = [
 ]
 
 STORE_LEN = config.MAX_SEQ_LEN + 1  # 학습 시 next-item shift(input/target)에 1개 더 필요
+
+NS_PER_SEC = 1_000_000_000
+SEC_PER_DAY = 86400
+
+
+def _time_of_day_ids(ts_ns: np.ndarray) -> np.ndarray:
+    """ts(나노초, SQL에서 이미 Asia/Seoul 로컬시간으로 변환됨) -> 3시간 단위 시간대 버킷.
+    0=pad(여기선 안 나옴), 1~8=00-03시.. 21-24시 구간(config.TIME_OF_DAY_VOCAB_SIZE 참고)."""
+    seconds_of_day = (ts_ns // NS_PER_SEC) % SEC_PER_DAY
+    hour = seconds_of_day // 3600
+    return (1 + hour // config.TIME_OF_DAY_BUCKET_HOURS).astype(np.int64)
+
+
+def _time_gap_id(delta_sec: float) -> int:
+    """직전 이벤트와의 간격(초) -> TiSASRec 스타일 버킷. 0=pad, 1=첫 이벤트(위에서 별도
+    처리), 2..(2+len(경계))=간격 구간(config.TIME_GAP_BOUNDARIES_SEC 참고)."""
+    idx = int(np.searchsorted(config.TIME_GAP_BOUNDARIES_SEC, delta_sec, side="right"))
+    return 2 + idx
 
 
 def _source_paths():
@@ -88,12 +111,14 @@ def fit_vocabs(paths):
 
 
 def build(paths, media_vocab, inventory_vocab, ad_type_vocab, connection_type_vocab):
-    ids, media_seqs, inventory_seqs, ad_seqs, connection_seqs = [], [], [], [], []
+    ids = []
+    media_seqs, inventory_seqs, ad_seqs, connection_seqs = [], [], [], []
+    time_of_day_seqs, time_gap_seqs = [], []
     seen = set()
 
     for path in paths:
         print(f"[INFO] 시퀀스 구성(2-pass): {path}")
-        # device_ifa -> [(ts_ns, media_id, inventory_id, ad_id, connection_id), ...]
+        # device_ifa -> [(ts_ns, media_id, inventory_id, ad_id, connection_id, time_of_day_id), ...]
         # 값들은 이미 vocab id(int)로 인코딩해서 담는다 — 원본 문자열을 그대로 쌓으면
         # 이 버킷 하나가 파일 크기(최대 7GB)에 육박할 수 있어 메모리 위험이 크다.
         buckets = defaultdict(list)
@@ -103,29 +128,57 @@ def build(paths, media_vocab, inventory_vocab, ad_type_vocab, connection_type_vo
             if chunk.empty:
                 continue
             n_rows += len(chunk)
-            ts_ns = pd.to_datetime(chunk[config.TS_COL], errors="coerce").astype("int64").to_numpy()
+            # pandas 버전에 따라 to_datetime의 기본 해상도가 us/ns로 갈릴 수 있어(실측:
+            # pandas 3.0.3에서 datetime64[us] 기본) astype("int64")만 하면 실제로는
+            # 마이크로초 값이 나와 아래 시간대/간격 버킷 계산이 1000배 어긋난다 —
+            # datetime64[ns]로 강제 캐스팅해 항상 진짜 나노초 단위를 보장한다.
+            ts_ns = (
+                pd.to_datetime(chunk[config.TS_COL], errors="coerce")
+                .astype("datetime64[ns]")
+                .astype("int64")
+                .to_numpy()
+            )
             media_ids = chunk[config.MEDIA_COL].map(media_vocab.encode).to_numpy()
             inv_ids = chunk[config.INVENTORY_TYPE_COL].map(inventory_vocab.encode).to_numpy()
             ad_ids = chunk[config.AD_TYPE_COL].map(ad_type_vocab.encode).to_numpy()
             conn_ids = chunk[config.CONNECTION_TYPE_COL].map(connection_type_vocab.encode).to_numpy()
+            tod_ids = _time_of_day_ids(ts_ns)
             device_ifas = chunk[config.ID_COL].to_numpy()
 
-            for device_ifa, t, m, inv, ad, conn in zip(device_ifas, ts_ns, media_ids, inv_ids, ad_ids, conn_ids):
+            for device_ifa, t, m, inv, ad, conn, tod in zip(
+                device_ifas, ts_ns, media_ids, inv_ids, ad_ids, conn_ids, tod_ids
+            ):
                 if device_ifa in seen:
                     continue
-                buckets[device_ifa].append((t, m, inv, ad, conn))
+                buckets[device_ifa].append((t, m, inv, ad, conn, tod))
         print(f"[INFO]   {n_rows:,}행 스캔, {len(buckets):,}개 신규 디바이스 후보")
 
         n_finalized = 0
         for device_ifa, events in buckets.items():
             events.sort(key=lambda e: e[0])
+
+            # 시간 간격 버킷(TiSASRec 스타일)은 STORE_LEN으로 자르기 전, 전체 정렬된
+            # 시퀀스 기준으로 계산한다 — 자른 뒤 계산하면 잘림 경계의 첫 이벤트가 실제로는
+            # 직전 이벤트가 있는데도 "첫 이벤트"로 잘못 표시된다.
+            gap_ids_full = []
+            prev_t = None
+            for e in events:
+                if prev_t is None:
+                    gap_ids_full.append(1)  # 첫 이벤트(직전 이벤트 없음)
+                else:
+                    gap_ids_full.append(_time_gap_id((e[0] - prev_t) / NS_PER_SEC))
+                prev_t = e[0]
+
             events = events[-STORE_LEN:]
+            gap_ids_full = gap_ids_full[-STORE_LEN:]
 
             ids.append(str(device_ifa))
             media_seqs.append(np.array([e[1] for e in events], dtype=np.int16))
             inventory_seqs.append(np.array([e[2] for e in events], dtype=np.int8))
             ad_seqs.append(np.array([e[3] for e in events], dtype=np.int8))
             connection_seqs.append(np.array([e[4] for e in events], dtype=np.int8))
+            time_of_day_seqs.append(np.array([e[5] for e in events], dtype=np.int8))
+            time_gap_seqs.append(np.array(gap_ids_full, dtype=np.int8))
             seen.add(device_ifa)
             n_finalized += 1
         print(f"[INFO]   {n_finalized:,}개 디바이스 확정 (누적 {len(seen):,})")
@@ -137,6 +190,8 @@ def build(paths, media_vocab, inventory_vocab, ad_type_vocab, connection_type_vo
         "inventory_type_ids": np.array(inventory_seqs, dtype=object),
         "ad_type_ids": np.array(ad_seqs, dtype=object),
         "connection_type_ids": np.array(connection_seqs, dtype=object),
+        "time_of_day_ids": np.array(time_of_day_seqs, dtype=object),
+        "time_gap_ids": np.array(time_gap_seqs, dtype=object),
     }
 
 

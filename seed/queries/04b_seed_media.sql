@@ -4,6 +4,10 @@
    top500 미디어 vocab은 자체 계산하지 않고 03_create_media_vocab_table.sql로 만든
    propfit_media_top500(전체 모집단 기준, seed/pool 공유)을 그대로 참조한다 —
    03_create_media_vocab_table.sql 헤더 참고(vocab 불일치 방지 이유). 전수 추출.
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
+   pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
+   모집단 자체를 region=KR AND OS=Android로 제한한다.
    ============================================================ */
 
 WITH raw_visit AS (
@@ -31,6 +35,8 @@ WITH raw_visit AS (
       AND trim(CAST(v.req_user_id AS VARCHAR)) <> ''
       AND CAST(v.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (v.device_lmt IS NULL OR CAST(v.device_lmt AS VARCHAR) <> '1')
+      AND CAST(v.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(v.device_osv AS VARCHAR), '^[0-9]+$')
 ),
 top500 AS (
     SELECT

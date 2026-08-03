@@ -36,11 +36,13 @@ class MediaSequenceDataset(Dataset):
         self.ids: List[str] = []
         self.inputs, self.targets, self.lengths = [], [], []
         self.inventory, self.ad_types, self.connection_types = [], [], []
+        self.time_gaps, self.time_of_days = [], []
         self.skipped = 0
 
-        for uid, m, inv, ad, conn in zip(
+        for uid, m, inv, ad, conn, gap, tod in zip(
             data["device_ifa"], data["media_ids"], data["inventory_type_ids"],
             data["ad_type_ids"], data["connection_type_ids"],
+            data["time_gap_ids"], data["time_of_day_ids"],
         ):
             if len(m) < min_len:
                 self.skipped += 1
@@ -56,6 +58,10 @@ class MediaSequenceDataset(Dataset):
             self.inventory.append(_pad(inv[:-1], max_len, 0))
             self.ad_types.append(_pad(ad[:-1], max_len, 0))
             self.connection_types.append(_pad(conn[:-1], max_len, 0))
+            # time_gap_ids/time_of_day_ids도 입력 스텝(inp_m)과 같은 위치(:-1)로 잘라야
+            # "이 이벤트가 언제, 얼마만의 간격으로 일어났는가"가 대응하는 media와 맞는다.
+            self.time_gaps.append(_pad(gap[:-1], max_len, 0))
+            self.time_of_days.append(_pad(tod[:-1], max_len, 0))
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -69,6 +75,8 @@ class MediaSequenceDataset(Dataset):
             torch.tensor(self.inventory[idx], dtype=torch.long),
             torch.tensor(self.ad_types[idx], dtype=torch.long),
             torch.tensor(self.connection_types[idx], dtype=torch.long),
+            torch.tensor(self.time_gaps[idx], dtype=torch.long),
+            torch.tensor(self.time_of_days[idx], dtype=torch.long),
         )
 
 
@@ -82,14 +90,17 @@ class MediaSequenceInferenceDataset(Dataset):
         self.ids: List[str] = []
         self.inputs, self.lengths = [], []
         self.inventory, self.ad_types, self.connection_types = [], [], []
+        self.time_gaps, self.time_of_days = [], []
 
-        for uid, m, inv, ad, conn in zip(
+        for uid, m, inv, ad, conn, gap, tod in zip(
             data["device_ifa"], data["media_ids"], data["inventory_type_ids"],
             data["ad_type_ids"], data["connection_type_ids"],
+            data["time_gap_ids"], data["time_of_day_ids"],
         ):
             if len(m) < min_len:
                 continue
             m2, inv2, ad2, conn2 = m[-max_len:], inv[-max_len:], ad[-max_len:], conn[-max_len:]
+            gap2, tod2 = gap[-max_len:], tod[-max_len:]
 
             self.ids.append(str(uid))
             self.inputs.append(_pad(m2, max_len, 0))
@@ -97,6 +108,8 @@ class MediaSequenceInferenceDataset(Dataset):
             self.inventory.append(_pad(inv2, max_len, 0))
             self.ad_types.append(_pad(ad2, max_len, 0))
             self.connection_types.append(_pad(conn2, max_len, 0))
+            self.time_gaps.append(_pad(gap2, max_len, 0))
+            self.time_of_days.append(_pad(tod2, max_len, 0))
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -109,4 +122,6 @@ class MediaSequenceInferenceDataset(Dataset):
             torch.tensor(self.inventory[idx], dtype=torch.long),
             torch.tensor(self.ad_types[idx], dtype=torch.long),
             torch.tensor(self.connection_types[idx], dtype=torch.long),
+            torch.tensor(self.time_gaps[idx], dtype=torch.long),
+            torch.tensor(self.time_of_days[idx], dtype=torch.long),
         )

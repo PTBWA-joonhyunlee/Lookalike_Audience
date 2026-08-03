@@ -40,6 +40,8 @@ def load_model(device: torch.device, model_path=None) -> SASRec:
         inventory_type_vocab_size=len(inventory_vocab),
         ad_type_vocab_size=len(ad_type_vocab),
         connection_type_vocab_size=len(connection_type_vocab),
+        time_gap_vocab_size=config.TIME_GAP_VOCAB_SIZE,
+        time_of_day_vocab_size=config.TIME_OF_DAY_VOCAB_SIZE,
     ).to(device)
     model.load_state_dict(torch.load(model_path or config.MODEL_PATH, map_location=device))
     model.eval()
@@ -63,13 +65,17 @@ def run(output_path: str = None, batch_size: int = 4096, device: str = "auto", m
 
     ids, chunks = [], []
     with torch.no_grad():
-        for batch_ids, input_ids, lengths, inv_ids, ad_ids, conn_ids in tqdm(loader, mininterval=5.0):
+        for batch_ids, input_ids, lengths, inv_ids, ad_ids, conn_ids, gap_ids, tod_ids in tqdm(
+            loader, mininterval=5.0
+        ):
             z = model.pooled_embedding(
                 input_ids.to(device),
                 lengths.to(device),
                 inv_ids.to(device),
                 ad_ids.to(device),
                 conn_ids.to(device),
+                gap_ids.to(device),
+                tod_ids.to(device),
             )
             ids.extend(batch_ids)
             chunks.append(z.cpu().numpy())

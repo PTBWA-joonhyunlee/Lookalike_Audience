@@ -8,6 +8,13 @@
 # 장르)가 있어 nn.EmbeddingBag으로 평균을 냈지만, propfit 02_user_media.sql은
 # content_genre가 비어 있는 대신 inventory_type(app/site, 이벤트당 값 하나)을 준다 —
 # ad_type/connection_type과 똑같이 단일값 nn.Embedding으로 다룬다(EmbeddingBag 불필요).
+#
+# 2026-08-03 수정(TiSASRec 스타일 position + 시간대 side feature): 순서(0..max_len-1)만
+# 아는 기존 position_embedding은 "얼마나 시간이 흘렀는지"를 전혀 모른다는 한계가 있어,
+# 이 자리를 TiSASRec(Time Interval Aware SASRec) 방식으로 재정의한다 — position 대신
+# "직전 이벤트와의 시간 간격" 버킷(time_gap_ids, config.TIME_GAP_BOUNDARIES_SEC)을 쓴다.
+# 절대 시간대(3시간 단위, time_of_day_ids)는 간격과 다른 정보(간격=재방문 리듬, 시간대=
+# 습관적 이용 시간)라 대체가 아니라 inventory_type과 같은 방식의 side feature로 추가한다.
 
 import math
 
@@ -28,6 +35,8 @@ class SASRec(nn.Module):
         inventory_type_vocab_size: int,
         ad_type_vocab_size: int,
         connection_type_vocab_size: int,
+        time_gap_vocab_size: int,
+        time_of_day_vocab_size: int,
         pad_id: int = 0,
     ):
         super().__init__()
@@ -36,7 +45,10 @@ class SASRec(nn.Module):
         self.embed_dim = embed_dim
 
         self.item_embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_id)
-        self.position_embedding = nn.Embedding(max_len, embed_dim)
+        # position_embedding(순서 기반) 대신 time_gap_embedding(직전 이벤트와의 간격 기반,
+        # TiSASRec 스타일)을 쓴다 — 클래스 docstring 참고.
+        self.time_gap_embedding = nn.Embedding(time_gap_vocab_size, embed_dim, padding_idx=pad_id)
+        self.time_of_day_embedding = nn.Embedding(time_of_day_vocab_size, embed_dim, padding_idx=pad_id)
         self.inventory_type_embedding = nn.Embedding(inventory_type_vocab_size, embed_dim, padding_idx=pad_id)
         self.ad_type_embedding = nn.Embedding(ad_type_vocab_size, embed_dim, padding_idx=pad_id)
         self.connection_type_embedding = nn.Embedding(connection_type_vocab_size, embed_dim, padding_idx=pad_id)
@@ -67,13 +79,16 @@ class SASRec(nn.Module):
         inventory_type_ids: torch.Tensor,
         ad_type_ids: torch.Tensor,
         connection_type_ids: torch.Tensor,
+        time_gap_ids: torch.Tensor,
+        time_of_day_ids: torch.Tensor,
     ) -> torch.Tensor:
-        """input_ids/inventory_type_ids/ad_type_ids/connection_type_ids: (B, L) -> hidden states (B, L, D)."""
+        """input_ids/inventory_type_ids/ad_type_ids/connection_type_ids/time_gap_ids/
+        time_of_day_ids: (B, L) -> hidden states (B, L, D)."""
         batch_size, seq_len = input_ids.shape
-        positions = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, seq_len)
 
         x = self.item_embedding(input_ids) * math.sqrt(self.embed_dim)
-        x = x + self.position_embedding(positions)
+        x = x + self.time_gap_embedding(time_gap_ids)
+        x = x + self.time_of_day_embedding(time_of_day_ids)
         x = x + self.inventory_type_embedding(inventory_type_ids)
         x = x + self.ad_type_embedding(ad_type_ids)
         x = x + self.connection_type_embedding(connection_type_ids)
@@ -99,8 +114,14 @@ class SASRec(nn.Module):
         inventory_type_ids: torch.Tensor,
         ad_type_ids: torch.Tensor,
         connection_type_ids: torch.Tensor,
+        time_gap_ids: torch.Tensor,
+        time_of_day_ids: torch.Tensor,
     ) -> torch.Tensor:
-        return self.logits(self.encode(input_ids, inventory_type_ids, ad_type_ids, connection_type_ids))
+        return self.logits(
+            self.encode(
+                input_ids, inventory_type_ids, ad_type_ids, connection_type_ids, time_gap_ids, time_of_day_ids
+            )
+        )
 
     def pooled_embedding(
         self,
@@ -109,9 +130,13 @@ class SASRec(nn.Module):
         inventory_type_ids: torch.Tensor,
         ad_type_ids: torch.Tensor,
         connection_type_ids: torch.Tensor,
+        time_gap_ids: torch.Tensor,
+        time_of_day_ids: torch.Tensor,
     ) -> torch.Tensor:
         """유저 1명당 임베딩 = 마지막 실제(non-pad) 스텝 위치의 hidden state."""
-        hidden = self.encode(input_ids, inventory_type_ids, ad_type_ids, connection_type_ids)  # (B, L, D)
+        hidden = self.encode(
+            input_ids, inventory_type_ids, ad_type_ids, connection_type_ids, time_gap_ids, time_of_day_ids
+        )  # (B, L, D)
         last_idx = (lengths - 1).clamp(min=0)
         batch_idx = torch.arange(hidden.size(0), device=hidden.device)
         return hidden[batch_idx, last_idx]  # (B, D)

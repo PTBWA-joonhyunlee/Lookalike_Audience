@@ -23,6 +23,10 @@
    의 원래 1% 필터는 `= 0`(부호 무관하게 안전)였고, addi 쪽 `01_pool_profile_apr_may.sql`은
    crc32(부호 없는 해시)를 썼던 것 — 이번에 `xxhash64` + `< N` 조합을 처음 써서 이
    문제가 드러났다. crc32 기반으로 교체했다.
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
+   pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
+   모집단 자체를 region=KR AND OS=Android로 제한한다.
    ============================================================ */
 
 WITH bidlog_latest AS (
@@ -45,6 +49,8 @@ WITH bidlog_latest AS (
       AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
       AND sd.device_ifa IS NULL   -- seed 제외(양성/음성 라벨 오염 방지)
+      AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$')
       AND mod(crc32(to_utf8(CAST(b.device_ifa AS VARCHAR))), 1000) < 50   -- 5% 표본(부호 없는 해시)
 )
 SELECT

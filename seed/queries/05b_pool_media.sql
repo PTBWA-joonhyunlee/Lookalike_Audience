@@ -15,6 +15,10 @@
    자체는 정상이었음). crc32(부호 없는 해시)로 교체했다. device_ifa UUID 형식 필터는
    유지 — seed가 skb.ad_id 크로스워크를 거쳐 이미 UUID 공간이므로 ID 공간을 맞추기
    위함(전체의 3.7%만 제거되는 수준이라 이번 행 폭증의 원인은 아니었음).
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
+   pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
+   모집단 자체를 region=KR AND OS=Android로 제한한다.
    ============================================================ */
 
 WITH raw_visit AS (
@@ -44,6 +48,8 @@ WITH raw_visit AS (
       AND CAST(v.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (v.device_lmt IS NULL OR CAST(v.device_lmt AS VARCHAR) <> '1')
       AND sd.device_ifa IS NULL
+      AND CAST(v.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(v.device_osv AS VARCHAR), '^[0-9]+$')
       AND mod(crc32(to_utf8(CAST(v.device_ifa AS VARCHAR))), 1000) < 50
 ),
 top500 AS (

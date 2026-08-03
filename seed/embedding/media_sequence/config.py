@@ -45,6 +45,22 @@ MAX_SEQ_LEN = 50     # 유저당 최근 N스텝만 사용(그보다 길면 앞�
 MIN_SEQ_LEN = 5      # 이벤트가 이보다 적은 유저는 학습/추론 임베딩에서 제외
                       # (다음-아이템 예측 신호가 너무 약해 신뢰하기 어려움)
 
+# 2026-08-03 추가(TiSASRec 스타일 position + 시간대 side feature): 기존 position_embedding은
+# 순서(0..49)만 알고 실제 얼마나 시간이 흘렀는지 모른다는 한계가 있어, position을 "직전
+# 이벤트와의 시간 간격" 버킷으로 재정의한다(model.py 참고). 여기에 절대 시간대(3시간
+# 단위)는 정보가 달라(간격=재방문 리듬, 시간대=습관적 이용 시간) 별도 side feature로
+# 추가한다 — inventory_type/ad_type/connection_type과 동일 패턴.
+#
+# 시간 간격 버킷: 경계값(초) 8개 -> 9구간(<5분/5~30분/30분~1시간/1~3시간/3~6시간/6~12시간/
+# 12~24시간/1~3일/3일 이상). 인코딩: 0=pad, 1=첫 이벤트(직전 이벤트 없음), 2~10=구간.
+TIME_GAP_BOUNDARIES_SEC = [300, 1800, 3600, 10800, 21600, 43200, 86400, 259200]
+TIME_GAP_VOCAB_SIZE = len(TIME_GAP_BOUNDARIES_SEC) + 1 + 2  # 구간 9 + 첫이벤트 1 + pad 1 = 11
+
+# 절대 시간대 버킷: 3시간 단위 8구간(00-03시, 03-06시, ..., 21-24시, ts는 이미 SQL에서
+# Asia/Seoul로 변환된 로컬 시각). 인코딩: 0=pad, 1~8=구간.
+TIME_OF_DAY_BUCKET_HOURS = 3
+TIME_OF_DAY_VOCAB_SIZE = 24 // TIME_OF_DAY_BUCKET_HOURS + 1  # 구간 8 + pad 1 = 9
+
 EMBED_DIM = 64
 N_HEADS = 2
 N_LAYERS = 2

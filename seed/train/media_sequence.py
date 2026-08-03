@@ -76,6 +76,8 @@ def train(
         inventory_type_vocab_size=len(inventory_vocab),
         ad_type_vocab_size=len(ad_type_vocab),
         connection_type_vocab_size=len(connection_type_vocab),
+        time_gap_vocab_size=config.TIME_GAP_VOCAB_SIZE,
+        time_of_day_vocab_size=config.TIME_OF_DAY_VOCAB_SIZE,
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -88,7 +90,7 @@ def train(
     for epoch in range(1, num_epochs + 1):
         total_loss = 0.0
         total_tokens = 0
-        for _, input_ids, target_ids, _lengths, inv_ids, ad_ids, conn_ids in tqdm(
+        for _, input_ids, target_ids, _lengths, inv_ids, ad_ids, conn_ids, gap_ids, tod_ids in tqdm(
             loader, desc=f"epoch {epoch}/{num_epochs}", leave=False, mininterval=5.0
         ):
             input_ids = input_ids.to(device)
@@ -96,9 +98,11 @@ def train(
             inv_ids = inv_ids.to(device)
             ad_ids = ad_ids.to(device)
             conn_ids = conn_ids.to(device)
+            gap_ids = gap_ids.to(device)
+            tod_ids = tod_ids.to(device)
 
             optimizer.zero_grad()
-            logits = model(input_ids, inv_ids, ad_ids, conn_ids)  # (B, L, V)
+            logits = model(input_ids, inv_ids, ad_ids, conn_ids, gap_ids, tod_ids)  # (B, L, V)
             loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
 
             loss.backward()

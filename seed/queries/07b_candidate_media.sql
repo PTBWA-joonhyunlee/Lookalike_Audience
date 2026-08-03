@@ -4,6 +4,10 @@
    제한하고 propfit_media_top500(04, 학습 때와 같은 vocab)을 그대로 참조한다 —
    자체 top500 재계산 금지(학습 모델과 다른 vocab이 되면 전부 OOV로 깨짐). 기간은
    2026-06, 전수 추출.
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고.
+   06에서 이미 region=KR/OS=Android로 후보를 제한했지만, 이 쿼리도 독립적으로 같은
+   조건을 명시해 다른 candidate 테이블에 재사용될 때도 안전하게 한다.
    ============================================================ */
 
 WITH raw_visit AS (
@@ -30,6 +34,8 @@ WITH raw_visit AS (
       AND v.req_user_id IS NOT NULL AND trim(CAST(v.req_user_id AS VARCHAR)) <> ''
       AND CAST(v.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (v.device_lmt IS NULL OR CAST(v.device_lmt AS VARCHAR) <> '1')
+      AND CAST(v.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(v.device_osv AS VARCHAR), '^[0-9]+$')
 ),
 top500 AS (
     SELECT

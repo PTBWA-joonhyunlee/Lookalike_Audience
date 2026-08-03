@@ -22,6 +22,10 @@
    **다음 단계(아직 안 만듦)**: 이 테이블이 확정되면 07a/07b/07c와 같은 패턴으로
    profile/media/segment 추출 쿼리를 이 테이블 기준으로 새로 만들어야 한다(예:
    07d_media_candidate_profile.sql 등) — 지금은 후보 목록 자체만 우선 만든다.
+
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
+   pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
+   후보 모집단(base CTE) 자체를 region=KR AND OS=Android로 제한한다.
    ============================================================ */
 
 CREATE TABLE candidates_202606_media
@@ -37,6 +41,8 @@ WITH base AS (
       AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
       AND sd.device_ifa IS NULL
+      AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$')
 ),
 raw_visit AS (
     SELECT
