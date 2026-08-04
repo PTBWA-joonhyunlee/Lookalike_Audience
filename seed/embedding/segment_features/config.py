@@ -9,11 +9,11 @@ from pathlib import Path
 # data/는 seed/postback이 공유하는 top-level 위치라 seed/ 안으로 옮기지 않았다.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
-# 11_user_embedding_features.sql 결과 CSV 위치 — seed/pool/candidate 세 population의
-# *_segment.csv(04c_seed_segment.csv/05c_pool_segment.csv/07c_candidate_segment.csv)를
-# 전부 glob해서 하나로 합친다. build_features.py는 population 구분 없이 피처 인코딩만
-# 하고(device_ifa 키로 나중에 어느 population인지 다시 매핑), 여기서 합쳐 만든 하나의
-# age_vocab/피처 배열을 세 population이 공유한다.
+# seed/queries/lib/11_user_embedding_features.sql 결과 CSV 위치 — seed/pool/candidate 세
+# population의 *_segment.csv(seed_segment.csv/pool_segment.csv/candidate_segment.csv,
+# seed/queries/segment/ 출력)를 전부 glob해서 하나로 합친다. build_features.py는
+# population 구분 없이 피처 인코딩만 하고(device_ifa 키로 나중에 어느 population인지
+# 다시 매핑), 여기서 합쳐 만든 하나의 age_vocab/피처 배열을 세 population이 공유한다.
 DATA_DIR = PROJECT_ROOT / "data" / "seed"
 DATA_GLOB = "*_segment.csv"
 
@@ -54,7 +54,7 @@ POOLED_MAX_LEN = {
 GENDER_SCORE_COL = "gender_score"      # SQL에서 이미 계산된 스칼라, 그대로 통과
 AGE_BRACKET_ID_COL = "age_bracket_ids"  # 세미콜론 구분, 보통 0~1개 -> 첫 값만 사용
 
-# ---- Autoencoder 하이퍼파라미터 (seed/docs/model_architecture.md) ----
+# ---- Autoencoder 하이퍼파라미터 ----
 AGE_EMBED_DIM = 8   # 카테고리 필드용 소규모 임베딩 차원
 
 # 그룹별 768dim pooled 벡터를 concat 전에 투영하는 차원 — "그룹이 담는 정보량"(카디널리티/

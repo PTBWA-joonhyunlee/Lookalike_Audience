@@ -1,10 +1,12 @@
 /* ============================================================
-   07c_candidate_segment.sql (seed, 구 08c_candidate_segment.sql)
-   11_user_embedding_features.sql(propfit)과 동일 로직, device_ifa를
-   candidates_202606(06)으로 제한(skp 자체는 기간 파티션 필터 없이 "가장 최근 레코드"
-   기준이라 06월로 따로 안 좁힘 — 06에서 이미 "누가 후보인지"를 확정했으므로 그 대상만
-   조회). ID 목록은 04c_seed_segment.sql/05c_pool_segment.sql/lib/11_user_embedding_features.sql과
-   동일 — taxonomy가 바뀌면 전부 같이 갱신할 것.
+   segment/04_candidate_segment.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구
+   07c_candidate_segment.sql)
+   lib/11_user_embedding_features.sql(propfit)과 동일 로직, device_ifa를
+   candidates_202606(03_create_candidate_table.sql)으로 제한(skp 자체는 기간 파티션
+   필터 없이 "가장 최근 레코드" 기준이라 06월로 따로 안 좁힘 — 03에서 이미 "누가
+   후보인지"를 확정했으므로 그 대상만 조회). ID 목록은 01_pool_segment.sql/
+   02_seed_segment.sql/lib/11_user_embedding_features.sql과 동일 — taxonomy가 바뀌면
+   전부 같이 갱신할 것.
    ============================================================ */
 
 WITH segments_latest AS (

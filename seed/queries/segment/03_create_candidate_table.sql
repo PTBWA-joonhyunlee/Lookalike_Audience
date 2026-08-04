@@ -1,11 +1,12 @@
 /* ============================================================
-   06_create_candidate_table.sql (seed, 구 07_create_candidate_table.sql)
-   목적: "신규 후보"(2026-07-30 확정 — seed 리스트에 없음 + 2026-06 최근 활동) device_ifa
-   목록을 만든다. 학습 기간(pool/seed = 2026-04~05)과 겹치지 않는 06월로 잡아 addi
-   트랙의 학습/스코어링 기간 분리 관례(학습 04~05, 스코어링 06)를 그대로 따른다.
+   segment/03_create_candidate_table.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구
+   06_create_candidate_table.sql)
+   목적: "신규 후보"(2026-07-30 확정 — seed 리스트에 없음 + 2026-06 최근 활동 + skp
+   세그먼트 매칭) device_ifa 목록을 만든다 — segment 트랙 전용(candidates_202606). 학습
+   기간(pool/seed = 2026-04~05)과 겹치지 않는 06월로 잡아 학습/스코어링 기간 분리 관례를
+   따른다.
 
-   07a(profile)/07b(media)/07c(segment)가 이 테이블을 device_ifa 키로 공유 참조한다 —
-   "누가 후보인지" 로직을 세 번 반복하지 않기 위함(03/04와 동일한 패턴).
+   segment/04_candidate_segment.sql이 이 테이블을 device_ifa 키로 참조한다.
 
    2026-07-30 수정(UUID 필터): device_ifa UUID 형식 필터를 추가했다 — seed는
    skb.ad_id 크로스워크를 거쳐 이미 UUID 공간이므로(02d/02e 확인), 후보도 같은 ID
@@ -25,9 +26,10 @@
    **재실행 필요**: 07(이 파일), 08a, 08b, 08c 전부 — 후보 모집단이 바뀌었으므로.
    기존 candidates_202606이 있다면 DROP TABLE 후 재생성할 것.
 
-   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): media/02_pool_media.sql 주석 참고 —
    pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
-   후보 모집단 자체를 region=KR AND OS=Android로 제한한다.
+   후보 모집단 자체를 region=KR AND OS=Android로 제한한다(참고: 이 필터는 seed/pool
+   segment 쿼리에는 적용돼 있지 않다 — 01_pool_segment.sql 주석 참고).
    ============================================================ */
 
 CREATE TABLE candidates_202606

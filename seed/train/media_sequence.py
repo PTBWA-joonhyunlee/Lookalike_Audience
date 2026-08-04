@@ -117,7 +117,7 @@ def train(
         print(f"[epoch {epoch}/{num_epochs}] loss={avg_loss:.4f}")
 
         # segment_features 학습 때 마지막 epoch이 중간 epoch보다 나빠졌는데도 되돌릴 방법이
-        # 없었던 문제(seed/docs/model_architecture.md "한계" 참고)를 겪지 않도록, epoch마다
+        # 없었던 문제를 겪지 않도록, epoch마다
         # 마지막 상태(model.pt)와 별개로 loss가 가장 낮았던 시점(model_best.pt)도 남긴다.
         torch.save(model.state_dict(), config.MODEL_PATH)
         if avg_loss < best_loss:

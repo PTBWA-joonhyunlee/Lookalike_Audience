@@ -46,8 +46,7 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
   쓰기 전엔 항상 `CAST(col AS VARCHAR)`로 감싼다.
 - **Athena 쿼리 작성 시 주석은 `/* */` 블록 주석을 쓴다**: `--` 줄 주석은 실행 과정에서
   줄바꿈이 사라지면(콘솔 붙여넣기/스크립트 실행 방식에 따라 발생 가능) 뒤에 오는 SQL 문
-  전체를 삼켜 `cannot recognize input near '<EOF>'` 파싱 에러가 난다(2026-07-29 실제 발생,
-  `seed/docs/README.md` 참고).
+  전체를 삼켜 `cannot recognize input near '<EOF>'` 파싱 에러가 난다(2026-07-29 실제 발생).
 - **해시 기반 표본 추출은 부호 없는 해시를 쓴다**: Trino의 `mod()`는 피연산자 부호를
   따라가는데 `xxhash64`/`from_big_endian_64`는 부호 있는 BIGINT를 반환한다 —
   `mod(hash,N)<K` 형태로 쓰면 음수 전부가 통과해 의도한 비율의 약 2배가 뽑힌다(2026-07-30
@@ -71,7 +70,7 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
 - **media vocab은 전체 모집단 기준으로 한 번만 만들어 공유한다**: `02_user_media.sql`류는
   top500 미디어를 조회 대상 population 안에서 자체 계산하는 구조라, seed/pool/후보처럼
   서로 다른 population에서 각각 돌리면 vocab이 달라져 임베딩 모델이 한쪽 데이터를 대거
-  OOV로 취급하게 된다(`seed/queries/03_create_media_vocab_table.sql` 패턴 참고).
+  OOV로 취급하게 된다(`seed/queries/media/01_create_media_vocab_table.sql` 패턴 참고).
 - **식별자**: 유저 식별자는 `device_ifa`가 기본 키, `req_user_id`는 보조 키. 새 소스를
   붙일 때 이 둘 중 뭐가 진짜 안정적인 디바이스 키인지 확인할 것(위 ID 공간 규칙 참고).
 - **쿼리 정리**: 결론이 나서(매핑 확인, 방향 폐기 등) 더 재실행할 일이 없는 진단/EDA
@@ -87,7 +86,7 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
 ## 문서
 
 - [`README.md`](README.md) — 저장소 전체 구조 개요
-- [`seed/README.md`](seed/README.md) / [`seed/docs/README.md`](seed/docs/README.md) — seed
-  트랙 실행 방법 + 현재 산출물
-- [`seed/docs/model_architecture.md`](seed/docs/model_architecture.md) — 임베딩 모델 구조
+- [`seed/README.md`](seed/README.md) — seed 트랙 실행 방법 + 현재 산출물(`seed/docs/`는
+  2026-08-04 삭제됨 — segment/media 트랙 분리 이후 내용이 낡아서 정리, 필요하면
+  `summary_note/`의 최신 실험 요약 문서 참고)
 - [`eda/docs/README.md`](eda/docs/README.md) — 진단/EDA 인덱스(무엇을 왜 조사했는지)

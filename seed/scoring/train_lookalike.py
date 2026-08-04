@@ -37,7 +37,7 @@ def train(
 
     print(f"[INFO] 임베딩 로드: {[str(p) for p, _ in variant.sources]}")
     embeddings = load_embeddings(variant)
-    labeled = build_labeled_frame(embeddings)
+    labeled = build_labeled_frame(embeddings, variant)
     n_pos = int(labeled["label"].sum())
     n_neg = len(labeled) - n_pos
     print(f"[INFO] 학습 대상: {len(labeled)}명 (seed={n_pos}, pool={n_neg}, embed_dim={variant.embed_dim})")

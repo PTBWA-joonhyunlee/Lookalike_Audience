@@ -8,8 +8,7 @@
 # build_features.py는 디바이스별 pooled 벡터를 직접 저장하지 않고 이 인덱스로만 인코딩하고,
 # 실제 mean pooling은 학습 시 nn.EmbeddingBag.from_pretrained(lookup.vectors, padding_idx=0)이
 # 배치 단위로 한다 — 디바이스 수 x 768dim 벡터를 그룹마다 통째로 저장하면 1% 샘플(53만 명)
-# 만으로도 6GB가 넘어 전체 모집단(5,300만 명) 규모에서는 저장이 불가능하다(자세한 경위는
-# seed/docs/model_architecture.md 참고).
+# 만으로도 6GB가 넘어 전체 모집단(5,300만 명) 규모에서는 저장이 불가능하다.
 
 import numpy as np
 

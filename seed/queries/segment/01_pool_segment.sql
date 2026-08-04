@@ -1,13 +1,17 @@
 /* ============================================================
-   05c_pool_segment.sql (seed, 구 06c_pool_segment.sql)
-   11_user_embedding_features.sql(propfit)과 동일 로직, 원본의 1% 표본 필터(mod(...,100)=0,
-   부호 무관하게 안전한 형태)를 05a/05b와 동일한 5% 표본 키로 교체하고
-   seed_piellaven_ad_id를 제외한다. ID 목록은 04c_seed_segment.sql/
-   11_user_embedding_features.sql과 동일 — taxonomy가 바뀌면 세 파일 다 같이 갱신할 것.
+   segment/01_pool_segment.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구 05c_pool_segment.sql)
+   lib/11_user_embedding_features.sql(propfit)과 동일 로직, 원본의 1% 표본 필터(mod(...,100)=0,
+   부호 무관하게 안전한 형태)를 5% 표본 키로 교체하고 seed_piellaven_ad_id를 제외한다.
+   ID 목록은 02_seed_segment.sql/lib/11_user_embedding_features.sql과 동일 — taxonomy가
+   바뀌면 세 파일 다 같이 갱신할 것.
 
-   2026-07-30 수정: 06a에서 xxhash64 기반 mod(...,1000)<5가 부호 버그로 ~50.25%를
-   통과시키는 게 발견됐다(05a_pool_profile.sql 주석 참고) — 이 파일도 같은 패턴이라
-   crc32(부호 없는 해시)로 교체했다.
+   2026-07-30 수정: xxhash64 기반 mod(...,1000)<5가 부호 버그로 ~50.25%를 통과시키는 게
+   발견됐다(media/02_pool_media.sql 주석 참고) — crc32(부호 없는 해시)로 교체했다.
+
+   주의(2026-08-04): media 트랙(media/02_pool_media.sql)은 이 시점 region=KR/OS=Android
+   필터 + 20% 표본으로 바뀌었지만, 이 segment 트랙 쿼리는 그 필터를 적용하지 않은 채로
+   남아있다(skp 세그먼트 테이블 자체에 region/OS 컬럼이 없어 이 필터를 걸 수 없음) — segment
+   트랙의 pool은 media 트랙의 pool과 서로 다른 모집단이라는 점에 유의할 것.
    ============================================================ */
 
 WITH segments_latest AS (

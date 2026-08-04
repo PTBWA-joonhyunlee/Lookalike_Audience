@@ -1,13 +1,15 @@
 /* ============================================================
-   07b_candidate_media.sql (seed, 구 08b_candidate_media.sql)
-   02_user_media.sql(propfit)과 동일 로직, device_ifa를 candidates_202606(06)로
-   제한하고 propfit_media_top500(04, 학습 때와 같은 vocab)을 그대로 참조한다 —
-   자체 top500 재계산 금지(학습 모델과 다른 vocab이 되면 전부 OOV로 깨짐). 기간은
-   2026-06, 전수 추출.
+   media/03_seed_media.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구 04b_seed_media.sql)
+   lib/02_user_media.sql(propfit)과 동일 로직, device_ifa를 seed_piellaven_ad_id로
+   제한하고, top500 미디어 vocab은 자체 계산하지 않고 01_create_media_vocab_table.sql로
+   만든 propfit_media_top500(전체 모집단 기준, seed/pool/candidate 공유)을 그대로
+   참조한다(vocab 불일치 방지 이유). 전수 추출 — pool(02_pool_media.sql)과 달리 최소
+   활동량 조건은 없다(seed는 원래 활동량이 충분히 많아 필요성이 낮다고 판단, 모델
+   레벨 MIN_SEQ_LEN=5로 이미 걸러짐).
 
-   2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고.
-   06에서 이미 region=KR/OS=Android로 후보를 제한했지만, 이 쿼리도 독립적으로 같은
-   조건을 명시해 다른 candidate 테이블에 재사용될 때도 안전하게 한다.
+   2026-08-03 수정(region=KR/OS=Android 필터 추가): pool/candidate의 해외·iOS 트래픽이
+   media 신호를 희석시킨다는 가설을 검증하기 위해 모집단 자체를 region=KR AND
+   OS=Android로 제한한다.
    ============================================================ */
 
 WITH raw_visit AS (
@@ -29,9 +31,10 @@ WITH raw_visit AS (
         CAST(from_iso8601_timestamp(CAST(v.created_at AS VARCHAR)) AT TIME ZONE 'Asia/Seoul' AS timestamp) AS ts,
         v.year
     FROM "prod-ptbwa-dw"."abi_bid_log_flatten" v
-    JOIN candidates_202606 c ON v.device_ifa = c.device_ifa
-    WHERE v.year = '2026' AND v.month = '06'
-      AND v.req_user_id IS NOT NULL AND trim(CAST(v.req_user_id AS VARCHAR)) <> ''
+    JOIN seed_piellaven_ad_id sd ON v.device_ifa = sd.device_ifa
+    WHERE v.year = '2026' AND v.month IN ('04', '05')
+      AND v.req_user_id IS NOT NULL
+      AND trim(CAST(v.req_user_id AS VARCHAR)) <> ''
       AND CAST(v.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (v.device_lmt IS NULL OR CAST(v.device_lmt AS VARCHAR) <> '1')
       AND CAST(v.device_geo_region AS VARCHAR) LIKE 'KR%'
@@ -39,8 +42,15 @@ WITH raw_visit AS (
 ),
 top500 AS (
     SELECT
-        v.req_id, v.req_user_id, v.device_ifa, v.media,
-        v.inventory_type, v.ad_type, v.connection_type, v.ts, v.year
+        v.req_id,
+        v.req_user_id,
+        v.device_ifa,
+        v.media,
+        v.inventory_type,
+        v.ad_type,
+        v.connection_type,
+        v.ts,
+        v.year
     FROM raw_visit v
     JOIN propfit_media_top500 r ON v.media = r.media
 ),
@@ -52,7 +62,15 @@ flagged AS (
     FROM top500 t
 )
 SELECT
-    req_id, req_user_id, device_ifa, media, inventory_type, ad_type, connection_type, ts, year
+    req_id,
+    req_user_id,
+    device_ifa,
+    media,
+    inventory_type,
+    ad_type,
+    connection_type,
+    ts,
+    year
 FROM flagged
 WHERE prev_media IS NULL
    OR prev_media <> media

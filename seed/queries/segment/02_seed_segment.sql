@@ -1,8 +1,8 @@
 /* ============================================================
-   04c_seed_segment.sql (seed, 구 05c_seed_segment.sql)
-   11_user_embedding_features.sql(propfit)과 동일 로직(성별 스칼라/연령대/거주/관심사
+   segment/02_seed_segment.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구 04c_seed_segment.sql)
+   lib/11_user_embedding_features.sql(propfit)과 동일 로직(성별 스칼라/연령대/거주/관심사
    3그룹), device_ifa를 seed_piellaven_ad_id로 제한하고 원본의 1% 표본 필터
-   (mod(...)=0)는 제거해 전수 추출한다. ID 목록은 11_user_embedding_features.sql과
+   (mod(...)=0)는 제거해 전수 추출한다. ID 목록은 lib/11_user_embedding_features.sql과
    동일(세그먼트_카테고리.csv 기준) — taxonomy가 바뀌면 두 파일 다 같이 갱신할 것.
    ============================================================ */
 

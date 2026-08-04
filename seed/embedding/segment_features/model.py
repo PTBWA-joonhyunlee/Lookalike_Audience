@@ -1,6 +1,6 @@
 # seed/embedding/segment_features/model.py
 #
-# segment_features Autoencoder — seed/docs/model_architecture.md 설계.
+# segment_features Autoencoder.
 # 시퀀스가 아니라 유저 1명당 스냅샷 필드들이라 Autoencoder 구조를 쓴다.
 #
 # - gender_score: 스칼라, 그대로 concat

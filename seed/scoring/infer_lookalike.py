@@ -48,9 +48,12 @@ def score(
             name=variant.name,
             sources=[(Path(embeddings_csv), variant.embed_cols)],
             artifact_dir=variant.artifact_dir,
+            seed_ids_csv=variant.seed_ids_csv,
+            pool_ids_csv=variant.pool_ids_csv,
+            candidate_ids_csv=variant.candidate_ids_csv,
         )
     embeddings = load_embeddings(variant)
-    candidate_ids = load_ids(candidate_ids_csv or config.CANDIDATE_IDS_CSV)
+    candidate_ids = load_ids(candidate_ids_csv or variant.candidate_ids_csv)
     df = embeddings[embeddings[config.ID_COL].isin(candidate_ids)].copy()
     print(f"[INFO] 후보 {len(df)}명 스코어링 (candidate 모집단 {len(candidate_ids)}명 중 임베딩 있는 대상)")
 

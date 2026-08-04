@@ -1,7 +1,7 @@
 # seed/embedding/media_sequence/build_features.py
 #
-# 04b_seed_media.csv/05b_pool_media.csv/07b_candidate_media.csv(이벤트 그레인, 합쳐서
-# 최대 14GB) -> device_ifa별 SASRec 학습/추론용 인코딩 시퀀스(media_features.npz).
+# seed_media.csv/pool_media.csv(이벤트 그레인, 합쳐서 최대 14GB) -> device_ifa별
+# SASRec 학습/추론용 인코딩 시퀀스(media_features.npz).
 # segment_features와 같은 이유로(무거운 전처리를 학습 루프에서 분리) build_features.py를
 # 따로 뒀지만, media는 세그먼트와 달리 "유저 1행"이 아니라 이벤트 그레인(유저당 수십~수백
 # 행)이라 전체를 pandas로 한 번에 읽으면 메모리가 감당 안 된다 — 그래서 2-pass 스트리밍으로
@@ -31,7 +31,6 @@
 # 실행(seed/ 안에서 cd 후): ..\.venv\Scripts\python.exe -m embedding.media_sequence.build_features
 
 import argparse
-import glob as globmod
 import os
 from collections import Counter, defaultdict
 
@@ -72,10 +71,13 @@ def _time_gap_id(delta_sec: float) -> int:
 
 
 def _source_paths():
-    # 파일명 정렬 = 04b(seed) -> 05b(pool) -> 07b(candidate) 순서와 자연스럽게 일치한다.
-    paths = sorted(globmod.glob(str(config.DATA_DIR / config.DATA_GLOB)))
-    if not paths:
-        raise FileNotFoundError(f"{config.DATA_GLOB} 패턴의 CSV가 {config.DATA_DIR}에 없습니다.")
+    # config.DATA_FILES 순서(seed -> pool) 그대로 처리한다 — candidate_media.csv는
+    # 일부러 여기 안 넣는다(config.py DATA_FILES 주석 참고, --reuse-vocab --input으로
+    # 별도 처리).
+    paths = [str(config.DATA_DIR / f) for f in config.DATA_FILES]
+    missing = [p for p in paths if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(f"다음 CSV가 {config.DATA_DIR}에 없습니다: {missing}")
     return paths
 
 
@@ -198,11 +200,12 @@ def build(paths, media_vocab, inventory_vocab, ad_type_vocab, connection_type_vo
 def main():
     parser = argparse.ArgumentParser(
         description="media CSV -> device_ifa별 인코딩 시퀀스(media_features.npz). "
-        "기본값(인자 없음)은 DATA_GLOB 전체를 스캔해 vocab을 새로 적합한다(최초 학습용)."
+        "기본값(인자 없음)은 config.DATA_FILES(seed_media.csv, pool_media.csv)를 스캔해 "
+        "vocab을 새로 적합한다(최초 학습용)."
     )
     parser.add_argument(
         "--input", nargs="+",
-        help="처리할 특정 CSV 경로(들). 생략 시 DATA_DIR/DATA_GLOB 전체를 스캔",
+        help="처리할 특정 CSV 경로(들). 생략 시 DATA_DIR/config.DATA_FILES를 스캔",
     )
     parser.add_argument(
         "--output", help=f"결과 npz 저장 경로 (생략 시 기본값: {config.FEATURES_NPZ_PATH})",

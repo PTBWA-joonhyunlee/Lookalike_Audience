@@ -1,6 +1,6 @@
 # seed/embedding/media_sequence/config.py
 #
-# 입력 스키마는 seed/queries/lib/02_user_media.sql(및 seed/queries/04b/05b/07b_*_media.sql)의
+# 입력 스키마는 seed/queries/lib/02_user_media.sql(및 seed/queries/media/02~05_*.sql)의
 # 출력과 맞춘다. 옛 addi 트랙 embedding/media_sequence/config.py를 propfit 스키마로 이식 —
 # content_genre 컬럼이 없는 대신 inventory_type(app/site)이 있어 이걸 ad_type/connection_type과
 # 같은 단일값 보조 피처로 다룬다(dataset.py/model.py 헤더 참고).
@@ -10,11 +10,16 @@ from pathlib import Path
 # seed/embedding/media_sequence/config.py -> parent 4번 = 저장소 루트(seed/의 상위).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
-# 04b_seed_media.csv / 05b_pool_media.csv / 07b_candidate_media.csv (이벤트 그레인, 합쳐서
-# 최대 14GB) — build_features.py가 청크 단위로 스트리밍 처리한다(전체를 한 번에 메모리에
-# 올리지 않음).
+# seed_media.csv / pool_media.csv (이벤트 그레인, 합쳐서 최대 14GB) — build_features.py가
+# 청크 단위로 스트리밍 처리한다(전체를 한 번에 메모리에 올리지 않음). 기본 학습 대상은 이
+# 둘뿐이다 — candidate_media.csv(media/05_candidate_media.sql 출력, 스코어링 대상
+# population)는 여기 포함시키지 않는다(--reuse-vocab --input으로 별도 처리, train.media_sequence
+# 실행 안내 참고) — vocab을 candidate로 오염시키지 않고, 학습 손실도 순수 seed/pool
+# 다음-아이템 예측에만 집중시키기 위함(2026-08-04 segment/media 트랙 분리 이후 명시적으로
+# 파일명을 나열, 이전엔 "*_media.csv" 글롭이 우연히 seed/pool/구candidate 3개만
+# 매칭했었다 — candidate_media.csv도 이름이 같은 패턴이라 이제는 명시적 목록이 필요).
 DATA_DIR = PROJECT_ROOT / "data" / "seed"
-DATA_GLOB = "*_media.csv"
+DATA_FILES = ["seed_media.csv", "pool_media.csv"]
 
 ARTIFACT_DIR = PROJECT_ROOT / "data" / "models" / "media_sequence"
 FEATURES_NPZ_PATH = ARTIFACT_DIR / "media_features.npz"
@@ -31,8 +36,9 @@ INVENTORY_TYPE_COL = "inventory_type"
 AD_TYPE_COL = "ad_type"
 CONNECTION_TYPE_COL = "connection_type"
 
-# 03_create_media_vocab_table.sql이 이미 전체 모집단 기준 top500으로 media를 제한해뒀으므로
-# 카디널리티가 낮다. min_freq=1(전부 포함), max_size는 방어적 상한만 둔다.
+# seed/queries/media/01_create_media_vocab_table.sql이 이미 전체 모집단 기준 top500으로
+# media를 제한해뒀으므로 카디널리티가 낮다. min_freq=1(전부 포함), max_size는 방어적
+# 상한만 둔다.
 MIN_FREQ = 1
 MAX_VOCAB_SIZE = 500
 

@@ -43,10 +43,12 @@ def load_embeddings(variant: Variant) -> pd.DataFrame:
     return merged
 
 
-def build_labeled_frame(embeddings: pd.DataFrame) -> pd.DataFrame:
-    """seed=1, pool=0 라벨을 붙인 학습용 프레임. candidate는 여기 포함되지 않는다."""
-    seed_ids = load_ids(config.SEED_IDS_CSV)
-    pool_ids = load_ids(config.POOL_IDS_CSV)
+def build_labeled_frame(embeddings: pd.DataFrame, variant: Variant) -> pd.DataFrame:
+    """seed=1, pool=0 라벨을 붙인 학습용 프레임. candidate는 여기 포함되지 않는다.
+    variant.seed_ids_csv/pool_ids_csv를 쓴다 — 트랙마다 pool 정의가 달라(segment/media
+    분리, config.py 참고) variant별로 다른 population 목록을 써야 한다."""
+    seed_ids = load_ids(variant.seed_ids_csv)
+    pool_ids = load_ids(variant.pool_ids_csv)
 
     df = embeddings[embeddings[config.ID_COL].isin(seed_ids | pool_ids)].copy()
     df["label"] = df[config.ID_COL].isin(seed_ids).astype("float32")
