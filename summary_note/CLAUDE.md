@@ -44,6 +44,31 @@ media(혹은 세그먼트 등 그 실험의 핵심 비교 피처) 분석이 들�
 - candidate가 여러 하위 그룹(예: 스코어링 후 상위 10%)으로 갈리는 실험이면 그 하위
   그룹도 표에 열로 추가한다(4개보다 늘어나도 됨 — 최소 4개가 기준선).
 
+## 3. pool/seed/candidate 각각에서 media/segment(핵심 피처) 보유 비율
+
+population을 정의하는 원래 규모와 그 population 중 실제로 해당 실험의 핵심 피처
+(media/segment 등) 임베딩·데이터를 보유한 인원수는 다를 수 있다 — 예: media_sequence
+임베딩은 이벤트 5건 미만 디바이스를 제외하고(`embedding/media_sequence/config.MIN_SEQ_LEN`),
+segment는 taxonomy 세그먼트가 아예 없는 디바이스도 있을 수 있다. 이걸 밝히지 않으면
+"pool 2,743,442명"이 마치 전부 media 신호를 갖고 있는 것처럼 오해되고, 위 2번 절
+비교표의 분모(n=...)가 population 원래 규모인지 피처 보유자 수인지도 불분명해진다.
+
+- pool/seed/candidate(및 candidate/pool 상위 N% 등 하위 그룹) 각각에 대해 **(a) population
+  원래 규모, (b) 그중 실제로 media/segment 임베딩·데이터를 보유한 인원수와 비율**을 표로
+  명시한다.
+
+  ```
+  | | seed | pool | candidate |
+  |---|---|---|---|
+  | population 규모 | 1,010,817 | 2,743,442 | 804,606 |
+  | media 임베딩 보유(비율) | 699,708 (69.2%) | 1,515,425 (55.2%) | ... |
+  ```
+
+- 100%가 아니라면 왜 빠지는지(예: MIN_SEQ_LEN 미만이라 임베딩 없음, taxonomy 세그먼트
+  미보유 등) 한 줄로 남긴다.
+- 이 표는 1번 절(추출 방식) 바로 아래나 2번 절(비교표) 바로 위에 둬서, 2번 절 표의 열
+  헤더 n=...이 원래 규모인지 피처 보유자 수인지 바로 대조해 확인할 수 있게 한다.
+
 ## 참고
 
 이 형식은 [`20260803_피엘라벤_media_KR_Android_필터_TiSASRec_재실험_요약.md`](20260803_피엘라벤_media_KR_Android_필터_TiSASRec_재실험_요약.md)
