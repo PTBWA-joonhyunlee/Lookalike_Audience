@@ -1,9 +1,9 @@
 /* ============================================================
    05b_pool_media.sql (seed, 구 06b_pool_media.sql)
    02_user_media.sql(propfit)과 동일 로직 + (a) seed_piellaven_ad_id 제외
-   (b) 06a와 동일한 5% 표본 키(device_ifa 해시, mod 1000 기준) (c) propfit_media_top500 vocab 참조
-   (자체 top500 재계산 안 함, 04 헤더 참고). 표본 비율 0.5%→5% 조정 사유는
-   05a_pool_profile.sql 주석 참고(양성/음성 비율 개선).
+   (b) 05a와 동일한 표본 키(device_ifa 해시, mod 1000 기준, 현재 20%: < 200)
+   (c) propfit_media_top500 vocab 참조(자체 top500 재계산 안 함, 04 헤더 참고).
+   표본 비율 조정 이력은 05a_pool_profile.sql 주석 참고(양성/음성 비율 개선).
 
    원본 02_user_media.sql은 device_ifa를 필터하지 않는다(req_user_id 기준) — 여기서는
    표본 추출/seed 제외에 device_ifa가 반드시 있어야 하므로 device_ifa NOT NULL 조건을
@@ -19,6 +19,11 @@
    2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
    pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
    모집단 자체를 region=KR AND OS=Android로 제한한다.
+
+   2026-08-03 수정(표본 비율 5%→20% 상향): 05a_pool_profile.sql 주석 참고 — region/OS
+   필터 후 pool의 KR+Android 해당 비율이 27.77%뿐이라(seed는 97~99%), 5% 표본을
+   그대로 두면 필터 후 pool 규모가 seed보다 작아진다. `mod(...,1000) < 50`을
+   `< 200`으로 올렸다(05a와 반드시 같은 값을 유지할 것).
    ============================================================ */
 
 WITH raw_visit AS (
@@ -50,7 +55,7 @@ WITH raw_visit AS (
       AND sd.device_ifa IS NULL
       AND CAST(v.device_geo_region AS VARCHAR) LIKE 'KR%'
       AND regexp_like(CAST(v.device_osv AS VARCHAR), '^[0-9]+$')
-      AND mod(crc32(to_utf8(CAST(v.device_ifa AS VARCHAR))), 1000) < 50
+      AND mod(crc32(to_utf8(CAST(v.device_ifa AS VARCHAR))), 1000) < 200
 ),
 top500 AS (
     SELECT

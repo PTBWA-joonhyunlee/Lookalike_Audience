@@ -1,9 +1,9 @@
 /* ============================================================
    05a_pool_profile.sql (seed, 구 06a_pool_profile.sql)
    01_user_profile.sql(propfit)과 동일 로직 + (a) seed_piellaven_ad_id 제외
-   (b) 학습용 5% 표본(device_ifa 해시 기준 — 06b/06c와 반드시 같은 키를 써야 같은
-   표본 코호트가 세 피처에 걸쳐 일치한다: mod(...,1000) < 50 = 5%). 기간은 seed와
-   동일한 2026-04~05(pool/seed가 같은 기간이어야 분류기 학습이 성립).
+   (b) 학습용 표본(device_ifa 해시 기준, 현재 20%: mod(...,1000) < 200 — 표본 비율
+   변경 이력은 아래 날짜별 항목 참고). 기간은 seed와 동일한 2026-04~05(pool/seed가
+   같은 기간이어야 분류기 학습이 성립).
 
    2026-07-30 표본 비율 조정: 최초 0.5%(mod(...,1000)<5)로 06a가 350,000행 나왔는데,
    seed(양성, 05a 전수 1,197,069행) 대비 pool(음성)이 더 적어(약 1:0.29) 지도학습에
@@ -27,6 +27,16 @@
    2026-08-03 수정(region=KR/OS=Android 필터 추가): 04a_seed_profile.sql 헤더 참고 —
    pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
    모집단 자체를 region=KR AND OS=Android로 제한한다.
+
+   2026-08-03 수정(표본 비율 5%→20% 상향): 위 region/OS 필터를 추가하면서 실측한
+   결과, 필터 적용 전 05a_pool_profile.csv(351만 704행) 중 region=KR AND OS=Android를
+   동시에 만족하는 행은 27.77%(974,810행)뿐이었다(seed는 97.78~99.19%로 거의 전부
+   해당하는 것과 대조적 — pool은 애초에 해외 트래픽 비중이 높아서다). 5% 표본을 그대로
+   두면 필터 후 pool 규모가 seed(약 118만 7천 명, 04a 실측)보다 작아지거나 비슷해져
+   2026-07-30에 5%로 올렸던 이유(seed 대비 pool이 적어 지도학습에 불리)가 재발한다 —
+   `mod(...,1000) < 50`(5%)을 `< 200`(20%)으로 올려 필터 후에도 pool이 seed보다
+   충분히 크도록(대략 27.77% × 20% ≈ 5.5%, 필터 전 5% 표본 규모와 비슷한 수준으로)
+   맞췄다.
    ============================================================ */
 
 WITH bidlog_latest AS (
@@ -51,7 +61,7 @@ WITH bidlog_latest AS (
       AND sd.device_ifa IS NULL   -- seed 제외(양성/음성 라벨 오염 방지)
       AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
       AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$')
-      AND mod(crc32(to_utf8(CAST(b.device_ifa AS VARCHAR))), 1000) < 50   -- 5% 표본(부호 없는 해시)
+      AND mod(crc32(to_utf8(CAST(b.device_ifa AS VARCHAR))), 1000) < 200   -- 20% 표본(부호 없는 해시)
 )
 SELECT
     req_user_id,
