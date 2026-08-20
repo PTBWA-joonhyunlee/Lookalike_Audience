@@ -1,10 +1,13 @@
 # seed/scoring/train_lookalike.py
 #
 # segment/media/combined 임베딩(config.VARIANTS)으로 seed=1/pool=0 지도학습 분류기를
-# 학습한다. addi 트랙의 scoring/train_supervised_lookalike.py에 해당하는 자리 —
-# 다만 이번엔 seed/pool 규모가 비슷해서(약 250만 vs 255만, addi처럼 양성이 0.01% 수준으로
-# 희소하지 않음) 층화 미니배치 샘플링이나 pos_weight 없이 단순 셔플 + train/val 분할로
-# 충분하다.
+# 학습한다. addi 트랙의 scoring/train_supervised_lookalike.py에 해당하는 자리.
+#
+# 2026-08-19(je variant 추가로 WeightedRandomSampler 도입): 피엘라벤은 seed/pool 규모가
+# 비슷해서(약 250만 vs 255만) 원래 단순 셔플로 충분했지만, je(1,922명)처럼 seed가 pool
+# 대비 극단적으로 작은 경우 균등 셔플로는 배치당 양성 표본이 거의 안 걸려 학습이 붕괴한다.
+# 클래스 빈도 역수 가중치의 WeightedRandomSampler로 학습 배치를 뽑도록 바꿨다 — seed/pool
+# 규모가 비슷한 경우엔 가중치가 거의 균일해져 기존 동작과 사실상 같다.
 #
 # 실행 전 준비: --variant segment는 inference.segment_features, --variant media/combined는
 # inference.media_sequence(도 같이)로 임베딩 CSV를 먼저 만들어야 한다.
@@ -15,7 +18,7 @@ import argparse
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 
 from embedding.common.device import resolve_device
 from . import config
@@ -49,7 +52,17 @@ def train(
     n_val = int(n * val_split)
     val_idx, train_idx = perm[:n_val], perm[n_val:]
 
-    train_loader = DataLoader(Subset(dataset, train_idx), batch_size=batch_size, shuffle=True)
+    # seed:pool 비율이 극단적으로 기울면(예: je 1,922 vs pool 250만, 약 1:1300) 균등 셔플로는
+    # 배치 하나에 양성이 평균 1개도 안 걸려 학습이 사실상 "전부 pool" 쪽으로 붕괴한다 —
+    # 클래스별 빈도의 역수를 샘플 가중치로 준 WeightedRandomSampler(복원추출)로 각 배치에
+    # 양성/음성이 고르게 섞이도록 한다. seed:pool 규모가 비슷한 경우(피엘라벤)에도 가중치가
+    # 거의 균일해져 기존 동작과 사실상 같다.
+    train_labels = labeled["label"].to_numpy()[train_idx]
+    class_counts = np.bincount(train_labels.astype(int), minlength=2)
+    sample_weights = 1.0 / class_counts[train_labels.astype(int)]
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_idx), replacement=True)
+
+    train_loader = DataLoader(Subset(dataset, train_idx), batch_size=batch_size, sampler=sampler)
     val_loader = DataLoader(Subset(dataset, val_idx), batch_size=batch_size, shuffle=False)
 
     model = LookalikeClassifier(variant.embed_dim, config.HIDDEN_DIM, config.DROPOUT).to(device)

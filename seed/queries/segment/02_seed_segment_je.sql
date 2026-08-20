@@ -1,16 +1,13 @@
 /* ============================================================
-   segment/04_candidate_segment.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구
-   07c_candidate_segment.sql)
-   lib/11_user_embedding_features.sql(propfit)과 동일 로직, device_ifa를
-   candidates_202606_0818(03_create_candidate_table.sql)으로 제한(skp 자체는 기간
-   파티션 필터 없이 "가장 최근 레코드" 기준이라 기간으로 따로 안 좁힘 — 03에서 이미
-   "누가 후보인지"를 확정했으므로 그 대상만 조회). ID 목록은 01_pool_segment.sql/
-   02_seed_segment.sql/lib/11_user_embedding_features.sql과 동일 — taxonomy가 바뀌면
-   전부 같이 갱신할 것.
-
-   2026-08-19 수정: 참조 테이블을 candidates_202606(06월, 664,684명)에서
-   candidates_202606_0818(06~08월18일, 후보 규모 확장판)로 교체 —
-   03_create_candidate_table.sql 2026-08-19 수정 내역 참고.
+   segment/02_seed_segment_je.sql (seed, je 신규 seed — 02_seed_segment.sql[피엘라벤]과
+   동일 로직, device_ifa만 seed_je_ad_id로 교체)
+   배경: 28_seed_je_id_space_check.sql 결과(2026-08-19) — seed_je는 크로스워크 없이 이미
+   raw GAID 공간이라 seed_je_ad_id(02_create_seed_ad_id_table_je.sql)를 그대로 조인한다.
+   pool/candidate는 기존 것(피엘라벤 트랙에서 이미 뽑아둔 pool_segment/candidates_202606)을
+   그대로 재사용하기로 했으므로(je seed 규모가 1,922명뿐이라 pool을 새로 뽑을 필요가
+   없다는 판단), 이 파일은 seed 쪽 피처만 새로 뽑는다. ID 목록은 01_pool_segment.sql/
+   lib/11_user_embedding_features.sql과 동일(세그먼트_카테고리.csv 기준) — taxonomy가
+   바뀌면 전부 같이 갱신할 것.
    ============================================================ */
 
 WITH segments_latest AS (
@@ -22,14 +19,14 @@ WITH segments_latest AS (
             ORDER BY year DESC, month DESC, day DESC
         ) AS rn
     FROM "propfit"."skp"
-    WHERE NOT (year = '2024' AND month = '12' AND day = '31')
+    WHERE NOT (year = '2024' AND month = '12' AND day = '31')   /* 깨진 .tmp 파티션만 제외 */
       AND CAST(id_type AS VARCHAR) = '2'
       AND ad_id IS NOT NULL AND trim(CAST(ad_id AS VARCHAR)) <> ''
 ),
 seg1 AS (
     SELECT sl.device_ifa, split(sl.segments, ';') AS segment_ids
     FROM segments_latest sl
-    JOIN candidates_202606_0818 c ON sl.device_ifa = c.device_ifa
+    JOIN seed_je_ad_id sd ON sl.device_ifa = sd.device_ifa
     WHERE sl.rn = 1
 ),
 matched AS (
@@ -49,10 +46,10 @@ gender_scored AS (
         age_ids, residence_ids, product_ids, content_ids, etc_ids,
         filter(
             transform(gender_ids, x -> CASE x
-                WHEN '26455' THEN 1.0
-                WHEN '26456' THEN 0.5
-                WHEN '26457' THEN -1.0
-                WHEN '26458' THEN -0.5
+                WHEN '26455' THEN 1.0    -- 여성(High)
+                WHEN '26456' THEN 0.5    -- 여성(Low)
+                WHEN '26457' THEN -1.0   -- 남성(High)
+                WHEN '26458' THEN -0.5   -- 남성(Low)
                 ELSE NULL
             END),
             x -> x IS NOT NULL

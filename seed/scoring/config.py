@@ -26,6 +26,10 @@ SEED_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "seed_segment.csv"
 POOL_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "pool_segment.csv"
 CANDIDATE_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "candidate_segment.csv"
 
+# je 신규 seed(2026-08-19) — pool/candidate는 피엘라벤 트랙 것을 그대로 재사용(je가
+# 1,922명뿐이라 pool을 새로 뽑을 필요가 없다는 판단), seed만 je로 교체.
+SEED_JE_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "seed_segment_je.csv"
+
 MEDIA_SEED_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "seed_media.csv"
 MEDIA_POOL_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "pool_media.csv"
 MEDIA_CANDIDATE_IDS_CSV = PROJECT_ROOT / "data" / "seed" / "candidate_media.csv"
@@ -82,6 +86,17 @@ VARIANTS = {
         sources=[(SEGMENT_EMBEDDINGS_CSV, SEGMENT_EMBED_COLS)],
         artifact_dir=PROJECT_ROOT / "data" / "models" / "lookalike_classifier",
         seed_ids_csv=SEED_IDS_CSV,
+        pool_ids_csv=POOL_IDS_CSV,
+        candidate_ids_csv=CANDIDATE_IDS_CSV,
+    ),
+    "segment_je": Variant(
+        name="segment_je",
+        # inference/segment_features.py 출력(SEGMENT_EMBEDDINGS_CSV)에 je seed 임베딩 행을
+        # append해서 재사용한다(seed/docs 안내 참고) — 피엘라벤 seed 행이 섞여 있어도
+        # build_labeled_frame이 seed_ids_csv/pool_ids_csv로만 라벨을 매기므로 무해하다.
+        sources=[(SEGMENT_EMBEDDINGS_CSV, SEGMENT_EMBED_COLS)],
+        artifact_dir=PROJECT_ROOT / "data" / "models" / "lookalike_classifier_je",
+        seed_ids_csv=SEED_JE_IDS_CSV,
         pool_ids_csv=POOL_IDS_CSV,
         candidate_ids_csv=CANDIDATE_IDS_CSV,
     ),

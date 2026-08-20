@@ -23,6 +23,45 @@ cd seed
 ..\.venv\Scripts\python.exe -m scoring.infer_lookalike --variant {segment,media,combined} --top-pct 10
 ```
 
+## 신규 seed가 들어왔을 때
+
+새 브랜드 seed 리스트(CSV)가 들어오면 아래 순서로 진행한다(je seed, 2026-08-19에서 확립된
+패턴 — `pipeline/`에 자동화돼 있음). 1)/3)은 Athena SQL이라 이 repo에 접근 권한이 없어
+사용자가 콘솔에서 직접 실행해야 한다(CLAUDE.md "데이터를 얻는 방법" 참고) — 그 외에는
+아래 명령을 그대로 실행하면 된다.
+
+```
+cd seed
+
+# 1) seed 테이블 등록 + ID 공간 확인 쿼리 생성
+..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries register --seed-name <name> --s3-path s3://ptbwa-dw/prod/seed_<name>/ --csv-filename <원본.csv> --header
+# -> queries/01_create_seed_table_<name>.sql, ../eda/queries/NN_seed_<name>_id_space_check.sql
+#    생성됨. 원본 CSV를 그 S3 경로에 올리고, 두 SQL을 Athena 콘솔에서 순서대로 실행한다.
+
+# 2) id_space_check 결과 한 줄(seed_total ~ seed_matches_skb_uuid, 6개 숫자)을 그대로 붙여넣어
+#    직접/크로스워크를 자동 판정 -> ad_id/segment/media 쿼리 생성 + candidate 제외 조건 patch
+..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries resolve --seed-name <name> --matches <seed_total> <bidlog> <skp_direct> <skb_ad_id> <skb_platform_ad_id> <skb_uuid>
+# -> queries/02_create_seed_ad_id_table_<name>.sql, queries/segment/02_seed_segment_<name>.sql,
+#    queries/media/03_seed_media_<name>.sql 생성 + queries/segment/03_create_candidate_table.sql에
+#    이 seed 제외 조건 자동 추가(patch). "판정 불가(ambiguous)"면 직접 id_space_check 결과를
+#    보고 02_create_seed_ad_id_table_<name>.sql을 수동 작성할 것(je/피엘라벤 버전 참고).
+
+# 3) 위에서 생성된 SQL을 Athena 콘솔에서 순서대로 실행하고, 결과 CSV를 ../data/seed/에 받는다
+#    (seed_segment_<name>.csv 필수, candidate_segment.csv는 03 재실행했다면 다시 받을 것)
+
+# 4) 인코딩(기존 학습된 Autoencoder로 forward만) -> 분류기 학습(seed=1/pool=0) -> candidate
+#    스코어링 -> 상위 N% 추출을 한 번에 실행
+..\.venv\Scripts\python.exe -m pipeline.run_new_seed_pipeline --seed-name <name> --top-pct 10
+# -> ../data/models/lookalike_classifier_<name>/candidate_scores.csv,
+#    candidate_scores_top10pct.csv
+```
+
+pool은 기본으로 기존 피엘라벤 pool(`pool_segment.csv`)을 재사용한다(신규 seed 규모가
+pool을 새로 뽑아야 할 만큼 크지 않다는 판단이 서면 그대로 두고, 아니라면
+`run_new_seed_pipeline.py --pool-ids-csv`로 대체). 자세한 설계 근거(왜 pool/candidate를
+재사용하는지, WeightedRandomSampler를 쓰는 이유 등)는 `../summary_note/`의 je 실험 요약
+문서 참고.
+
 ## 폴더 구조
 
 ```
@@ -32,6 +71,7 @@ queries/
 embedding/
   common/          공용 유틸(vocab/device/train_config/config_file)
   segment_features/  skp 세그먼트 임베딩(Autoencoder) 모델 정의
+    build_features_incremental.py  기존 vocab/lookup으로 population 하나만 인코딩(재학습 없음)
   media_sequence/    방문 앱/사이트 시퀀스 임베딩(SASRec) 모델 정의 + build_features.py(청크 전처리)
 train/
   segment_features.py   위 세그먼트 모델 학습 스크립트
@@ -39,10 +79,16 @@ train/
 inference/
   segment_features.py   학습된 세그먼트 모델로 임베딩(z) 추출 스크립트
   media_sequence.py     학습된 media 모델로 임베딩(m) 추출 스크립트
+  append_embeddings.py  임베딩 CSV를 기존 segment_embeddings.csv에 중복 없이 append
 scoring/
-  config.py/model.py/dataset.py   지도학습 lookalike 분류기 정의(segment/media/combined 3-variant)
+  config.py/model.py/dataset.py   지도학습 lookalike 분류기 정의(Variant로 seed마다 분리)
   train_lookalike.py    seed=1/pool=0으로 분류기 학습(--variant)
   infer_lookalike.py    candidate 스코어링 + 상위 후보 추출(--variant)
+pipeline/
+  generate_seed_queries.py   신규 seed의 Athena SQL(seed 테이블/id space 확인/ad_id/segment/
+                              media/candidate 제외 patch)을 템플릿으로 생성(register/resolve)
+  run_new_seed_pipeline.py   신규 seed의 Python 단계(인코딩 -> 학습 -> 스코어링 -> top N)를
+                              한 번에 실행 — "신규 seed가 들어왔을 때" 절 참고
 config/
   train_config.example.json
 docs/

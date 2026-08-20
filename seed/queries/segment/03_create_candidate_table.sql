@@ -30,14 +30,29 @@
    pool/candidate의 해외·iOS 트래픽이 media 신호를 희석시킨다는 가설을 검증하기 위해
    후보 모집단 자체를 region=KR AND OS=Android로 제한한다(참고: 이 필터는 seed/pool
    segment 쿼리에는 적용돼 있지 않다 — 01_pool_segment.sql 주석 참고).
+
+   2026-08-19 수정(기간 확장 06월→06~08월18일, 테이블명 candidates_202606→
+   candidates_202606_0818, seed_je 제외 추가): je 스코어링 결과 상위20%가 30만 명이
+   되도록 후보 규모를 664,684명에서 약 150만 명으로 늘리기 위함. skp 세그먼트 매칭
+   조건(가장 큰 축소 요인)과 region=KR/OS=Android 필터는 후보 품질 유지를 위해 그대로
+   두고, 학습 기간(pool/seed=2026-04~05)과 겹치지 않는 06~08월 범위로만 기간을 넓혔다
+   (08월은 실행 시점 기준 데이터가 있는 18일까지만 — 그 이후는 아직 파티션이 없을 수
+   있어 상한을 명시적으로 건다). 같은 김에 seed_je_ad_id도 제외 조건에 추가했다 —
+   기존엔 seed_piellaven만 제외해 je seed 본인 1,063명이 후보에 섞여 있었다
+   (summary_note/20260819_je_seed_segment_기반_룩어라이크_스코어링_요약.md 0-1절 참고).
+
+   **재실행 필요**: 이 파일, segment/04_candidate_segment.sql 전부 — 후보 모집단이
+   바뀌었으므로. 기존 candidates_202606_0818이 있다면 DROP TABLE 후 재생성할 것
+   (candidates_202606은 그대로 두고 새 테이블명으로 분리 — 기존 결과와 비교 가능하게).
    ============================================================ */
 
-CREATE TABLE candidates_202606
+CREATE TABLE candidates_202606_0818
 WITH (format = 'PARQUET')
 AS
 SELECT DISTINCT b.device_ifa
 FROM "prod-ptbwa-dw"."abi_bid_log_flatten" b
 LEFT JOIN seed_piellaven_ad_id sd ON b.device_ifa = sd.device_ifa
+LEFT JOIN seed_je_ad_id sj ON b.device_ifa = sj.device_ifa
 JOIN (
     SELECT ad_id AS device_ifa
     FROM (
@@ -54,11 +69,13 @@ JOIN (
     ) x
     WHERE rn = 1
 ) seg ON b.device_ifa = seg.device_ifa
-WHERE b.year = '2026' AND b.month = '06'
+WHERE b.year = '2026'
+  AND (b.month IN ('06', '07') OR (b.month = '08' AND CAST(b.day AS INTEGER) <= 18))
   AND b.device_ifa IS NOT NULL AND trim(CAST(b.device_ifa AS VARCHAR)) <> ''
   AND regexp_like(CAST(b.device_ifa AS VARCHAR), '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
   AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
   AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
   AND sd.device_ifa IS NULL
+  AND sj.device_ifa IS NULL
   AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
   AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$');
