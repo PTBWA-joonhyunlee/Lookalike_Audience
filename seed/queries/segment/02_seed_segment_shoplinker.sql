@@ -1,25 +1,10 @@
 /* ============================================================
-   segment/04_candidate_segment.sql (seed, 2026-08-04 segment/media 트랙 분리 — 구
-   07c_candidate_segment.sql)
-   lib/11_user_embedding_features.sql(propfit)과 동일 로직, device_ifa를
-   candidates_20260401_0824(03_create_candidate_table.sql)으로 제한(skp 자체는 기간
-   파티션 필터 없이 "가장 최근 레코드" 기준이라 기간으로 따로 안 좁힘 — 03에서 이미
-   "누가 후보인지"를 확정했으므로 그 대상만 조회). ID 목록은 01_pool_segment.sql/
-   02_seed_segment.sql/lib/11_user_embedding_features.sql과 동일 — taxonomy가 바뀌면
-   전부 같이 갱신할 것.
-
-   2026-08-19 수정: 참조 테이블을 candidates_202606(06월, 664,684명)에서
-   candidates_202606_0818(06~08월18일, 후보 규모 확장판)로 교체 —
-   03_create_candidate_table.sql 2026-08-19 수정 내역 참고.
-
-   2026-08-25 수정: 참조 테이블을 candidates_202606_0818(06~08월18일)에서
-   candidates_20260401_0824(04월01일~08월24일, 재확장판)로 교체 —
-   03_create_candidate_table.sql 2026-08-25 수정 내역 참고(학습 기간 겹침이 왜 이
-   트랙에선 문제가 안 되는지도 그쪽에 적어뒀다).
-
-   2026-08-26 수정: 참조 테이블을 candidates_20260401_0824에서
-   candidates_shoplinker_20260601_0824(shoplinker 전용, 06월01일~08월24일)로 교체 —
-   03_create_candidate_table.sql 2026-08-26 수정 내역 참고.
+   segment/02_seed_segment_shoplinker.sql (seed, shoplinker 신규 seed —
+   pipeline/generate_seed_queries.py가 segment/02_seed_segment_je.sql을 템플릿 삼아 자동
+   생성, device_ifa만 seed_shoplinker_ad_id로 교체). pool/candidate는 기존 것을 그대로
+   재사용한다는 전제 — 새 seed 규모가 크거나 기존 pool과 겹치는 게 걱정되면 pool을 따로
+   뽑아 scoring 단계에서 --pool-ids-csv로 넘길 것. taxonomy(segment ID 배열)는
+   02_seed_segment_je.sql과 동일 — taxonomy가 바뀌면 전부 같이 갱신할 것.
    ============================================================ */
 
 WITH segments_latest AS (
@@ -31,14 +16,14 @@ WITH segments_latest AS (
             ORDER BY year DESC, month DESC, day DESC
         ) AS rn
     FROM "propfit"."skp"
-    WHERE NOT (year = '2024' AND month = '12' AND day = '31')
+    WHERE NOT (year = '2024' AND month = '12' AND day = '31')   /* 깨진 .tmp 파티션만 제외 */
       AND CAST(id_type AS VARCHAR) = '2'
       AND ad_id IS NOT NULL AND trim(CAST(ad_id AS VARCHAR)) <> ''
 ),
 seg1 AS (
     SELECT sl.device_ifa, split(sl.segments, ';') AS segment_ids
     FROM segments_latest sl
-    JOIN candidates_shoplinker_20260601_0824 c ON sl.device_ifa = c.device_ifa
+    JOIN seed_shoplinker_ad_id sd ON sl.device_ifa = sd.device_ifa
     WHERE sl.rn = 1
 ),
 matched AS (
@@ -58,10 +43,10 @@ gender_scored AS (
         age_ids, residence_ids, product_ids, content_ids, etc_ids,
         filter(
             transform(gender_ids, x -> CASE x
-                WHEN '26455' THEN 1.0
-                WHEN '26456' THEN 0.5
-                WHEN '26457' THEN -1.0
-                WHEN '26458' THEN -0.5
+                WHEN '26455' THEN 1.0    -- 여성(High)
+                WHEN '26456' THEN 0.5    -- 여성(Low)
+                WHEN '26457' THEN -1.0   -- 남성(High)
+                WHEN '26458' THEN -0.5   -- 남성(Low)
                 ELSE NULL
             END),
             x -> x IS NOT NULL

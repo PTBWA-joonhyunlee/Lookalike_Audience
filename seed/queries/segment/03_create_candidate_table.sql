@@ -44,15 +44,49 @@
    **재실행 필요**: 이 파일, segment/04_candidate_segment.sql 전부 — 후보 모집단이
    바뀌었으므로. 기존 candidates_202606_0818이 있다면 DROP TABLE 후 재생성할 것
    (candidates_202606은 그대로 두고 새 테이블명으로 분리 — 기존 결과와 비교 가능하게).
+   2026-08-25 수정(기간 재확장 06~08/18 -> 04/01~08/24, 테이블명 candidates_202606_0818 ->
+   candidates_20260401_0824): 후보 규모를 더 늘리기 위해 bid log 조회 기간을 약 4.8개월로
+   넓혔다. 유지한 것: skp 세그먼트 매칭 조건, region=KR/OS=Android 필터, seed_piellaven/
+   seed_je 제외. 바뀐 것은 기간뿐이다.
+
+   학습 기간과의 겹침에 대해(CLAUDE.md "학습/스코어링 기간 분리" 규칙): 이 확장은
+   학습 기간(pool/seed = 2026-04~05)과 겹치지만, segment 트랙에서는 실질적인 leakage가
+   아니다 — (1) segment 트랙의 pool(01_pool_segment.sql)은 bid log가 아니라 propfit.skp
+   전체에서 device_ifa 해시 5% 표본으로 뽑으므로 애초에 기간 개념이 없다. 후보와 pool의
+   겹침은 기간이 아니라 그 5% 해시로만 결정되고, 기간을 넓혀도 겹침 "비율"은 변하지
+   않는다. (2) 피처(04_candidate_segment.sql)도 skp의 "가장 최근 레코드" 기준이라 조회
+   기간과 무관하다 — 기간을 넓혀도 개별 유저의 피처 벡터는 그대로고 후보 명단만 늘어난다.
+   즉 이 규칙이 막으려던 "학습 시점 이후 정보 유입"은 여기선 발생하지 않는다. 단 media
+   트랙(media/04_create_candidate_table_media.sql)은 피처 자체가 기간 의존이라 같은 논리가
+   적용되지 않는다 — 그쪽을 확장할 땐 다시 판단할 것.
+
+   08/24 상한: 실행 시점(2026-08-25) 기준 전날까지로 잡은 값이다 — 08/24 파티션이 실제로
+   적재돼 있는지는 확인하지 못했으니, 결과 건수가 예상보다 적으면 상한을 낮춰볼 것.
+
+   규모 예상: 06~08/18(약 2.5개월)이 약 150만 명이었으므로 04/01~08/24(약 4.8개월)는
+   200만 명 이상으로 예상된다(스캔량도 그만큼 늘어난다).
+
+   **재실행 필요**: 이 파일, segment/04_candidate_segment.sql 전부. 기존
+   candidates_202606_0818은 비교용으로 그대로 두고 새 테이블명으로 분리한다.
+
+   2026-08-26 수정(seed_shoplinker 제외 추가, pipeline/generate_seed_queries.py 자동 생성): candidate가 신규 seed(shoplinker) 본인을 포함하지 않도록 LEFT JOIN seed_shoplinker_ad_id + AND s_shoplinker.device_ifa IS NULL을 추가했다.
+   **재실행 필요**: 이 파일, segment/04_candidate_segment.sql — candidate 모집단이 바뀌므로.
+
+   2026-08-26 수정(테이블명 candidates_20260401_0824 -> candidates_shoplinker_20260601_0824,
+   기간 04/01~08/24 -> 06/01~08/24): shoplinker 전용 후보 테이블로 분리하고, 기간에서
+   04~05월(학습 기간과 겹치는 구간)을 제외했다. 기존 candidates_20260401_0824는 그대로
+   두고(다른 seed/variant가 참조 중이면 유지), 이 테이블은 shoplinker 스코어링 전용.
+   **재실행 필요**: 이 파일, segment/04_candidate_segment.sql.
    ============================================================ */
 
-CREATE TABLE candidates_202606_0818
+CREATE TABLE candidates_shoplinker_20260601_0824
 WITH (format = 'PARQUET')
 AS
 SELECT DISTINCT b.device_ifa
 FROM "prod-ptbwa-dw"."abi_bid_log_flatten" b
 LEFT JOIN seed_piellaven_ad_id sd ON b.device_ifa = sd.device_ifa
 LEFT JOIN seed_je_ad_id sj ON b.device_ifa = sj.device_ifa
+LEFT JOIN seed_shoplinker_ad_id s_shoplinker ON b.device_ifa = s_shoplinker.device_ifa
 JOIN (
     SELECT ad_id AS device_ifa
     FROM (
@@ -70,12 +104,13 @@ JOIN (
     WHERE rn = 1
 ) seg ON b.device_ifa = seg.device_ifa
 WHERE b.year = '2026'
-  AND (b.month IN ('06', '07') OR (b.month = '08' AND CAST(b.day AS INTEGER) <= 18))
+  AND (b.month IN ('06', '07') OR (b.month = '08' AND CAST(b.day AS INTEGER) <= 24))
   AND b.device_ifa IS NOT NULL AND trim(CAST(b.device_ifa AS VARCHAR)) <> ''
   AND regexp_like(CAST(b.device_ifa AS VARCHAR), '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
   AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
   AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
   AND sd.device_ifa IS NULL
   AND sj.device_ifa IS NULL
+  AND s_shoplinker.device_ifa IS NULL
   AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
   AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$');
