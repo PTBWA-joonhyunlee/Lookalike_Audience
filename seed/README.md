@@ -15,12 +15,8 @@ cd seed
 ..\.venv\Scripts\python.exe -m train.segment_features
 ..\.venv\Scripts\python.exe -m inference.segment_features
 
-..\.venv\Scripts\python.exe -m embedding.media_sequence.build_features
-..\.venv\Scripts\python.exe -m train.media_sequence
-..\.venv\Scripts\python.exe -m inference.media_sequence
-
-..\.venv\Scripts\python.exe -m scoring.train_lookalike --variant {segment,media,combined}
-..\.venv\Scripts\python.exe -m scoring.infer_lookalike --variant {segment,media,combined} --top-pct 10
+..\.venv\Scripts\python.exe -m scoring.train_lookalike --variant segment
+..\.venv\Scripts\python.exe -m scoring.infer_lookalike --variant segment --top-pct 10
 ```
 
 ## 신규 seed가 들어왔을 때
@@ -39,10 +35,10 @@ cd seed
 #    생성됨. 원본 CSV를 그 S3 경로에 올리고, 두 SQL을 Athena 콘솔에서 순서대로 실행한다.
 
 # 2) id_space_check 결과 한 줄(seed_total ~ seed_matches_skb_uuid, 6개 숫자)을 그대로 붙여넣어
-#    직접/크로스워크를 자동 판정 -> ad_id/segment/media 쿼리 생성 + candidate 제외 조건 patch
+#    직접/크로스워크를 자동 판정 -> ad_id/segment 쿼리 생성 + candidate 제외 조건 patch
 ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries resolve --seed-name <name> --matches <seed_total> <bidlog> <skp_direct> <skb_ad_id> <skb_platform_ad_id> <skb_uuid>
-# -> queries/02_create_seed_ad_id_table_<name>.sql, queries/segment/02_seed_segment_<name>.sql,
-#    queries/media/03_seed_media_<name>.sql 생성 + queries/segment/03_create_candidate_table.sql에
+# -> queries/02_create_seed_ad_id_table_<name>.sql, queries/segment/02_seed_segment_<name>.sql
+#    생성 + queries/segment/03_create_candidate_table.sql에
 #    이 seed 제외 조건 자동 추가(patch). "판정 불가(ambiguous)"면 직접 id_space_check 결과를
 #    보고 02_create_seed_ad_id_table_<name>.sql을 수동 작성할 것(je/피엘라벤 버전 참고).
 
@@ -66,19 +62,16 @@ pool을 새로 뽑아야 할 만큼 크지 않다는 판단이 서면 그대로 
 
 ```
 queries/
-  lib/            propfit 피처 추출 라이브러리(01_user_profile/02_user_media/11_user_embedding_features)
+  lib/            propfit 피처 추출 라이브러리(01_user_profile/11_user_embedding_features)
   01~07*.sql       seed 파이프라인(seed 테이블 등록 → 크로스워크 → 피처 추출 → pool/후보)
 embedding/
   common/          공용 유틸(vocab/device/train_config/config_file)
   segment_features/  skp 세그먼트 임베딩(Autoencoder) 모델 정의
     build_features_incremental.py  기존 vocab/lookup으로 population 하나만 인코딩(재학습 없음)
-  media_sequence/    방문 앱/사이트 시퀀스 임베딩(SASRec) 모델 정의 + build_features.py(청크 전처리)
 train/
   segment_features.py   위 세그먼트 모델 학습 스크립트
-  media_sequence.py     media 시퀀스 모델 학습 스크립트
 inference/
   segment_features.py   학습된 세그먼트 모델로 임베딩(z) 추출 스크립트
-  media_sequence.py     학습된 media 모델로 임베딩(m) 추출 스크립트
   append_embeddings.py  임베딩 CSV를 기존 segment_embeddings.csv에 중복 없이 append
 scoring/
   config.py/model.py/dataset.py   지도학습 lookalike 분류기 정의(Variant로 seed마다 분리)
@@ -86,7 +79,7 @@ scoring/
   infer_lookalike.py    candidate 스코어링 + 상위 후보 추출(--variant)
 pipeline/
   generate_seed_queries.py   신규 seed의 Athena SQL(seed 테이블/id space 확인/ad_id/segment/
-                              media/candidate 제외 patch)을 템플릿으로 생성(register/resolve)
+                              candidate 제외 patch)을 템플릿으로 생성(register/resolve)
   run_new_seed_pipeline.py   신규 seed의 Python 단계(인코딩 -> 학습 -> 스코어링 -> top N)를
                               한 번에 실행 — "신규 seed가 들어왔을 때" 절 참고
 config/

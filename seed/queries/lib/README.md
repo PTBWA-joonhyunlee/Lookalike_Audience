@@ -1,14 +1,14 @@
 # seed/queries/lib/
 
-propfit(skp) 세그먼트/media 기반 임베딩 피처를 뽑는 재사용 라이브러리 쿼리. `seed/`의
-segment/media 파이프라인(`seed/queries/segment/`, `seed/queries/media/`)이 이 쿼리들을
-device_ifa 조인으로 확장해서 쓴다 — postback 트랙을 시작하면 그쪽에서도 그대로 재사용할
-예정.
+propfit(skp) 세그먼트 기반 임베딩 피처를 뽑는 재사용 라이브러리 쿼리. `seed/`의 segment
+파이프라인(`seed/queries/segment/`)이 이 쿼리들을 device_ifa 조인으로 확장해서 쓴다.
 
 | # | SQL | 역할 |
 |---|---|---|
-| 02 | `02_user_media.sql` | media_sequence 입력(device_ifa × media × ts) — `seed/queries/media/`가 확장해서 씀 |
 | 11 | `11_user_embedding_features.sql` | skp 세그먼트 기반 임베딩 피처(성별 스칼라/연령대/거주/관심아 3그룹) — `seed/queries/segment/`가 확장해서 씀 |
+
+**2026-08-26 삭제**: `02_user_media.sql`(media_sequence 입력, `seed/queries/media/`가
+확장해서 씀)을 media 트랙 전체 삭제와 함께 지웠다. 필요해지면 git 히스토리에서 복구 가능.
 
 11의 출력은 `embedding/segment_features/build_features.py`가 읽어 최종 학습 피처(BERT
 풀링 벡터 등)로 변환한다.

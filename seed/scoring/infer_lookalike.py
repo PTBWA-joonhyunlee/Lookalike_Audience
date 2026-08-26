@@ -1,9 +1,8 @@
 # seed/scoring/infer_lookalike.py
 #
-# 학습된 lookalike 분류기(--variant segment/media/combined)로 6월 candidate(07a/07b/
-# 07c_candidate_*.csv 대상, 66만 명)를 스코어링하고, 점수 상위 후보 리스트를 뽑는다.
-# addi 트랙의 scoring/infer_supervised_lookalike.py에 해당하는 자리 — 재학습 없이 저장된
-# 분류기를 그대로 쓴다.
+# 학습된 lookalike 분류기(--variant segment)로 candidate를 스코어링하고, 점수 상위 후보
+# 리스트를 뽑는다. addi 트랙의 scoring/infer_supervised_lookalike.py에 해당하는 자리 —
+# 재학습 없이 저장된 분류기를 그대로 쓴다.
 #
 # 실행(seed/ 안에서 cd 후):
 #   ..\.venv\Scripts\python.exe -m scoring.infer_lookalike --variant segment [--top-pct 10]
@@ -37,9 +36,7 @@ def score(
     embeddings_csv=None,
 ) -> None:
     """candidate_ids_csv/embeddings_csv를 주면 학습된 variant 모델은 그대로 재사용하되,
-    다른 candidate 집단(예: media 활동 기준으로 새로 뽑은 candidates_202606_media_sample)에
-    스코어링한다 — segment/combined처럼 여러 소스를 concat하는 variant가 아니라
-    embeddings_csv 하나로 충분한 media 단독 스코어링에 쓴다."""
+    다른 candidate 집단이나 다른 임베딩 CSV에 스코어링한다."""
     device = resolve_device(device)
     print(f"[INFO] variant={variant.name} device={device}")
 
@@ -87,7 +84,7 @@ def main():
     parser.add_argument("--top-pct", type=float, default=10.0, help="상위 N%% 후보 리스트도 같이 저장")
     parser.add_argument("--output", help="전체 스코어 CSV 저장 경로")
     parser.add_argument("--candidate-ids-csv", help="candidate device_ifa 목록 CSV (생략 시 config.CANDIDATE_IDS_CSV)")
-    parser.add_argument("--embeddings-csv", help="임베딩 CSV 경로 override (segment/media 등 단일 소스 variant 전용)")
+    parser.add_argument("--embeddings-csv", help="임베딩 CSV 경로 override")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
     score(

@@ -4,7 +4,7 @@
 # 생성한다. 이 repo는 Athena 접근 권한이 없어 실행 자체는 여전히 사용자가 콘솔에서 해야
 # 하지만(CLAUDE.md "데이터를 얻는 방법" 참고), je seed(2026-08-19)에서 손으로 반복했던
 # 01_create_seed_table_*.sql / id_space_check 쿼리 / 02_create_seed_ad_id_table_*.sql
-# (직접/크로스워크 판정 포함) / segment·media 쿼리 / candidate 제외 조건 추가를 패턴화했다.
+# (직접/크로스워크 판정 포함) / segment 쿼리 / candidate 제외 조건 추가를 패턴화했다.
 #
 # 두 단계로 나뉜다 — ID 공간(크로스워크 필요 여부)은 실제 쿼리 실행 결과를 봐야 판정할 수
 # 있어 완전 자동화가 불가능하기 때문이다(eda/docs/id_space_crosswalk.md 참고, 매칭 건수만
@@ -14,7 +14,7 @@
 #      -> 사용자가 둘 다 Athena에서 실행하고, id space 쿼리 결과 한 줄(seed_total부터
 #         seed_matches_skb_uuid까지 6개 숫자)을 받아온다.
 #   2) resolve: 그 6개 숫자를 --matches로 넘기면 직접/크로스워크를 자동 판정해서
-#      02_create_seed_ad_id_table_<name>.sql / segment·media 쿼리를 생성하고,
+#      02_create_seed_ad_id_table_<name>.sql / segment 쿼리를 생성하고,
 #      segment/03_create_candidate_table.sql에 이 seed 제외 조건을 자동으로 추가한다
 #      (이미 추가돼 있으면 건드리지 않음 - 여러 번 실행해도 안전).
 #
@@ -43,15 +43,13 @@ if hasattr(sys.stdout, "reconfigure"):
 
 SEED_QUERIES_DIR = PROJECT_ROOT / "seed" / "queries"
 SEGMENT_QUERIES_DIR = SEED_QUERIES_DIR / "segment"
-MEDIA_QUERIES_DIR = SEED_QUERIES_DIR / "media"
 EDA_QUERIES_DIR = PROJECT_ROOT / "eda" / "queries"
 
-# segment/media 쿼리는 세그먼트 taxonomy(gender/age/residence/product/content/etc ID 배열)를
+# segment 쿼리는 세그먼트 taxonomy(gender/age/residence/product/content/etc ID 배열)를
 # 그대로 복사해야 해서 손으로 다시 옮기면 사고가 나기 쉽다 — je 버전을 "정본 템플릿"으로
 # 읽어서 seed_je_ad_id만 치환한다(je 버전 자체가 이미 taxonomy 변경 없이 피엘라벤 원본을
 # 그대로 복사한 것이므로 신뢰 가능).
 SEGMENT_TEMPLATE_PATH = SEGMENT_QUERIES_DIR / "02_seed_segment_je.sql"
-MEDIA_TEMPLATE_PATH = MEDIA_QUERIES_DIR / "03_seed_media_je.sql"
 CANDIDATE_TABLE_PATH = SEGMENT_QUERIES_DIR / "03_create_candidate_table.sql"
 
 BLOCK_COMMENT_END = "   ============================================================ */"
@@ -249,7 +247,7 @@ def render_ad_id_table_direct(seed_name: str, decision: dict) -> str:
    {DIRECT_THRESHOLD:.0%} 이상이라 이미 raw GAID(device_ifa) 공간으로 판정, skb 크로스워크
    없이 정규식 필터 + DISTINCT만 쓴다.
 
-   이후 모든 seed 피처 추출(segment/media)과 "신규 후보(pool - seed)" 판정은 이 쿼리로 만든
+   이후 모든 seed 피처 추출(segment)과 "신규 후보(pool - seed)" 판정은 이 쿼리로 만든
    seed_{seed_name}_ad_id 테이블을 device_ifa 키로 그대로 조인해서 쓴다.
    ============================================================ */
 
@@ -279,7 +277,7 @@ def render_ad_id_table_crosswalk(seed_name: str, decision: dict) -> str:
    다른 시점 GAID(리셋 이력 등)일 수 있음(피엘라벤 사례 참고, 그대로 두는 게 이 프로젝트의
    device_ifa/ad_id 그레인과 일관적이라 그대로 둠).
 
-   이후 모든 seed 피처 추출(segment/media)과 "신규 후보(pool - seed)" 판정은 이 쿼리로 만든
+   이후 모든 seed 피처 추출(segment)과 "신규 후보(pool - seed)" 판정은 이 쿼리로 만든
    seed_{seed_name}_ad_id 테이블(진짜 GAID 공간)을 device_ifa 키로 그대로 조인해서 쓴다.
    ============================================================ */
 
@@ -322,16 +320,6 @@ def render_segment_query(seed_name: str) -> str:
    02_seed_segment_je.sql과 동일 — taxonomy가 바뀌면 전부 같이 갱신할 것.
    ============================================================ */"""
     return _render_from_template(SEGMENT_TEMPLATE_PATH, seed_name, header)
-
-
-def render_media_query(seed_name: str) -> str:
-    header = f"""/* ============================================================
-   media/03_seed_media_{seed_name}.sql (seed, {seed_name} 신규 seed —
-   pipeline/generate_seed_queries.py가 media/03_seed_media_je.sql을 템플릿 삼아 자동 생성,
-   device_ifa만 seed_{seed_name}_ad_id로 교체). top500 미디어 vocab(propfit_media_top500)도
-   기존 걸 그대로 참조한다(vocab 불일치 방지, 전체 모집단 기준으로 한 번만 만들어 공유).
-   ============================================================ */"""
-    return _render_from_template(MEDIA_TEMPLATE_PATH, seed_name, header)
 
 
 def patch_candidate_table_exclusion(seed_name: str, candidate_table_path: Path = CANDIDATE_TABLE_PATH) -> bool:
@@ -379,7 +367,7 @@ def patch_candidate_table_exclusion(seed_name: str, candidate_table_path: Path =
     return True
 
 
-def cmd_resolve(seed_name: str, matches: list, skip_media: bool = False) -> None:
+def cmd_resolve(seed_name: str, matches: list) -> None:
     decision = decide_id_space(*matches)
     print(f"[판정] mode={decision['mode']} direct_rate={decision['direct_rate']:.1%} "
           f"crosswalk_rate={decision['crosswalk_rate']:.1%}(col={decision['crosswalk_col']})")
@@ -401,11 +389,6 @@ def cmd_resolve(seed_name: str, matches: list, skip_media: bool = False) -> None
     segment_path.write_text(render_segment_query(seed_name), encoding="utf-8")
     print(f"[OK] {segment_path}")
 
-    if not skip_media:
-        media_path = MEDIA_QUERIES_DIR / f"03_seed_media_{seed_name}.sql"
-        media_path.write_text(render_media_query(seed_name), encoding="utf-8")
-        print(f"[OK] {media_path}")
-
     patch_candidate_table_exclusion(seed_name)
 
     print("[다음 단계] 위 SQL들을 Athena 콘솔에서 순서대로 실행 -> 결과 CSV를 data/seed/에 "
@@ -424,18 +407,17 @@ def main():
     p_register.add_argument("--period-months", nargs=2, default=("04", "05"),
                              metavar=("START", "END"), help="id space 확인 시 bidlog 매칭 기간(기본 04 05)")
 
-    p_resolve = sub.add_parser("resolve", help="id space 결과로 ad_id/segment/media 쿼리 생성 + candidate 제외 조건 patch")
+    p_resolve = sub.add_parser("resolve", help="id space 결과로 ad_id/segment 쿼리 생성 + candidate 제외 조건 patch")
     p_resolve.add_argument("--seed-name", required=True)
     p_resolve.add_argument("--matches", nargs=6, type=int, required=True,
                             metavar=("SEED_TOTAL", "BIDLOG", "SKP_DIRECT", "SKB_AD_ID", "SKB_PLATFORM_AD_ID", "SKB_UUID"),
                             help="id_space_check 쿼리 결과 한 줄(SELECT 컬럼 순서 그대로)")
-    p_resolve.add_argument("--skip-media", action="store_true", help="media 트랙 쿼리는 생성하지 않음")
 
     args = parser.parse_args()
     if args.command == "register":
         cmd_register(args.seed_name, args.s3_path, args.csv_filename, args.header, tuple(args.period_months))
     elif args.command == "resolve":
-        cmd_resolve(args.seed_name, args.matches, args.skip_media)
+        cmd_resolve(args.seed_name, args.matches)
 
 
 if __name__ == "__main__":

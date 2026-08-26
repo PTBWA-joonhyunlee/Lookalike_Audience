@@ -1,6 +1,6 @@
 # eda/ — 진단/EDA 쿼리와 분석 결과
 
-`seed/`(그리고 앞으로 `postback/`) 트랙에서 쓰는 피처 추출 쿼리(`seed/queries/lib/`)를
+`seed/` 트랙에서 쓰는 피처 추출 쿼리(`seed/queries/lib/`)를
 확정하기까지의 진단·EDA 작업. 실행 순서 자체보다 "무엇을 확인했고 결론이 뭐였는지"가
 중요해서 쿼리(`eda/queries/`)와 분석 문서(`eda/docs/`)를 시간순으로 둔다.
 

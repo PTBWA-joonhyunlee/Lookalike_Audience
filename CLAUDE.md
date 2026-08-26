@@ -8,23 +8,23 @@
 
 propfit 소스(`abi_bid_log_flatten` bid log + `propfit.skp` 세그먼트)에서, 외부 브랜드 seed
 리스트(현재: 피엘라벤)와 비슷한 신규 유저를 임베딩 기반으로 찾아내는 것 — [`seed/`](seed/README.md)
-트랙. postback 로그 기반 트랙([`postback/`](postback/README.md))은 아직 착수 전이며, 어떤
-전환/라벨 정의를 쓸지는 그때 다시 설계한다.
+트랙. skp 세그먼트 임베딩만 쓴다(피처는 segment 단독).
 
 이전에는 addi(`addi_bid_log_flatten`/`addi_postback_log`, cmp_no 캠페인 postback→mall IP
 매칭 전환) 소스로 시작한 별도 트랙이 있었다 — 2026-07-30에 이 트랙과 그 코드/쿼리/문서를
-전부 삭제했다(propfit 소스로 갈아탐, 필요하면 git 히스토리 참고).
+전부 삭제했다(propfit 소스로 갈아탐, 필요하면 git 히스토리 참고). postback 로그 기반 트랙
+(placeholder였던 `postback/`)과 `seed/`의 media(방문 앱/사이트 시퀀스 임베딩) 하위 트랙도
+2026-08-26에 전부 삭제했다(필요하면 git 히스토리 참고).
 
 ## 폴더 구조
 
 ```
 seed/       외부 seed 기반 신규 유저 룩어라이크(현재 트랙) — queries/embedding/train/inference/config/docs
-postback/   postback 로그 기반 트랙(착수 전, placeholder)
-eda/        위 트랙들의 피처/쿼리를 확정하기까지의 진단·EDA 쿼리 + 분석 결과 문서
-data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 됨, seed/postback 공유)
+eda/        위 트랙의 피처/쿼리를 확정하기까지의 진단·EDA 쿼리 + 분석 결과 문서
+data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 됨)
 ```
 
-`seed/`, `postback/`은 독립 작업 루트다 — 그 폴더로 `cd`한 뒤 파이썬을 실행한다(`.venv`는
+`seed/`는 독립 작업 루트다 — 그 폴더로 `cd`한 뒤 파이썬을 실행한다(`.venv`는
 저장소 루트에 하나, 상대 경로로 참조). 새 트랙 폴더를 만들 때도 이 구조(queries/lib +
 번호 매긴 파이프라인 SQL, embedding/train/inference, docs/README.md)를 따른다.
 
@@ -67,10 +67,6 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
   참고, 그래도 원인 불명의 낮은 매칭률을 만나면 먼저 의심해볼 것). 새 ID 필드를 조인할 땐
   값 포맷(길이/정규식/샘플)을 직접 찍어보고 확인한다 — 매칭 건수만으로 "같은 공간"이라고
   추론하지 않는다.
-- **media vocab은 전체 모집단 기준으로 한 번만 만들어 공유한다**: `02_user_media.sql`류는
-  top500 미디어를 조회 대상 population 안에서 자체 계산하는 구조라, seed/pool/후보처럼
-  서로 다른 population에서 각각 돌리면 vocab이 달라져 임베딩 모델이 한쪽 데이터를 대거
-  OOV로 취급하게 된다(`seed/queries/media/01_create_media_vocab_table.sql` 패턴 참고).
 - **식별자**: 유저 식별자는 `device_ifa`가 기본 키, `req_user_id`는 보조 키. 새 소스를
   붙일 때 이 둘 중 뭐가 진짜 안정적인 디바이스 키인지 확인할 것(위 ID 공간 규칙 참고).
 - **쿼리 정리**: 결론이 나서(매핑 확인, 방향 폐기 등) 더 재실행할 일이 없는 진단/EDA

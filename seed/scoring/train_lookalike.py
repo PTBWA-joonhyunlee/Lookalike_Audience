@@ -1,7 +1,7 @@
 # seed/scoring/train_lookalike.py
 #
-# segment/media/combined 임베딩(config.VARIANTS)으로 seed=1/pool=0 지도학습 분류기를
-# 학습한다. addi 트랙의 scoring/train_supervised_lookalike.py에 해당하는 자리.
+# segment 임베딩(config.VARIANTS)으로 seed=1/pool=0 지도학습 분류기를 학습한다.
+# addi 트랙의 scoring/train_supervised_lookalike.py에 해당하는 자리.
 #
 # 2026-08-19(je variant 추가로 WeightedRandomSampler 도입): 피엘라벤은 seed/pool 규모가
 # 비슷해서(약 250만 vs 255만) 원래 단순 셔플로 충분했지만, je(1,922명)처럼 seed가 pool
@@ -9,8 +9,7 @@
 # 클래스 빈도 역수 가중치의 WeightedRandomSampler로 학습 배치를 뽑도록 바꿨다 — seed/pool
 # 규모가 비슷한 경우엔 가중치가 거의 균일해져 기존 동작과 사실상 같다.
 #
-# 실행 전 준비: --variant segment는 inference.segment_features, --variant media/combined는
-# inference.media_sequence(도 같이)로 임베딩 CSV를 먼저 만들어야 한다.
+# 실행 전 준비: inference.segment_features로 임베딩 CSV를 먼저 만들어야 한다.
 # 실행(seed/ 안에서 cd 후): ..\.venv\Scripts\python.exe -m scoring.train_lookalike --variant segment
 
 import argparse
@@ -100,7 +99,7 @@ def train(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="segment/media/combined 임베딩 기반 lookalike 분류기 학습")
+    parser = argparse.ArgumentParser(description="segment 임베딩 기반 lookalike 분류기 학습")
     parser.add_argument("--variant", choices=list(config.VARIANTS), default="segment")
     parser.add_argument("--epochs", type=int, default=config.NUM_EPOCHS)
     parser.add_argument("--batch-size", type=int, default=config.BATCH_SIZE)
