@@ -1,5 +1,6 @@
 /* ============================================================
-   20_candidate_segment_case_check.sql (eda, 구 09b_candidate_segment_case_check.sql)
+   id_space_check/13_candidate_segment_case_check.sql (eda, 구 eda/queries/20_candidate_segment_case_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 09b_candidate_segment_case_check.sql)
    배경: 09_case_sensitivity_check.sql과 같은 배경(대소문자 조인 문제 의심) — 이번엔
    08c_candidate_segment.sql이 직접 겪은 경우(candidates_202606 ↔ skp.ad_id)를
    같은 방식으로 대소문자 구분/무시 두 버전으로 재보아 실제 개선 폭을 수치로 잰다.

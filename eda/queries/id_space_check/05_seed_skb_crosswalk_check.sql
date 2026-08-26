@@ -1,9 +1,10 @@
 /* ============================================================
-   12_seed_skb_crosswalk_check.sql (eda, 구 02c_seed_skb_crosswalk_check.sql) — 최우선 확인
+   id_space_check/05_seed_skb_crosswalk_check.sql (eda, 구 eda/queries/12_seed_skb_crosswalk_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 02c_seed_skb_crosswalk_check.sql) — 최우선 확인
    배경: 01/02a/02b 결과 종합 — seed∩bidlog=135,165명(실제 GAID, 우연 아님) vs
    seed∩skp=1명. skp가 진짜 raw GAID ~5,330만 건을 갖고 있다면 150만 개 진짜 GAID
    리스트와 겹침이 1건일 수는 없다 — 즉 "skp.ad_id가 device_ifa와 곧바로 같은 공간"
-   이라는 00_id_mapping_check.sql(2026-07-24)의 결론이 이 seed에는 안 맞을 가능성이 있다.
+   이라는 01_id_mapping_check.sql(2026-07-24)의 결론이 이 seed에는 안 맞을 가능성이 있다.
    그 결론은 skp.ad_id ↔ skb.ad_id 매칭 건수(수십억, fan-out 포함)로 추론한 것이지 값
    포맷을 직접 본 게 아니었다.
 

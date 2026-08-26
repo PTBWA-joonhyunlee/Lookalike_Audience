@@ -1,16 +1,17 @@
 /* ============================================================
-   26_seed_segment_group_coverage.sql (eda, 2026-08-06)
+   segment_coverage/10_seed_segment_group_coverage.sql (eda, 구 eda/queries/26_seed_segment_group_coverage.sql —
+   2026-08-26 segment_coverage/ 폴더 이동 + 번호 재부여, 2026-08-06)
    목적: 피엘라벤 seed 중 GAID 크로스워크 성공(seed_piellaven_ad_id, id_space_crosswalk.md
    참고) + skp segment 데이터 보유 기기(id_space_crosswalk.md 기준 926,410명, 61.0%) 안에서,
    6개 segment 그룹(성별/연령대/거주/제품 관심사/콘텐츠 관심사/기타) 각각에 최소 1개 태그라도
    있는 기기 수/비율을 낸다.
 
    분모는 "GAID 매칭 + segment 보유" 기기 수(총 seed_piellaven_ad_id 대비 비율이 아님) —
-   07_group_bucket_coverage.sql/21_group_coverage_full_population.sql과 동일한 방식이지만
-   모집단을 전체 skp가 아니라 seed로 좁힌 버전.
+   segment_coverage/07_group_bucket_coverage.sql/09_group_coverage_full_population.sql과
+   동일한 방식이지만 모집단을 전체 skp가 아니라 seed로 좁힌 버전.
 
-   ID 목록/그룹 정의는 seed/queries/segment/02_seed_segment.sql, eda/queries/07·21과 동일
-   (세그먼트_카테고리.csv 기준, 07/21과 같이 taxonomy 바뀌면 세 파일 다 갱신).
+   ID 목록/그룹 정의는 seed/queries/segment/02_seed_segment.sql, eda/queries/segment_coverage/07·09와
+   동일(세그먼트_카테고리.csv 기준, 07/09와 같이 taxonomy 바뀌면 세 파일 다 갱신).
    전제: seed_piellaven_ad_id가 이미 있어야 함(seed/queries/02_create_seed_ad_id_table.sql).
    ============================================================ */
 

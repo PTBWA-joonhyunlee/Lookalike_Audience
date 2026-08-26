@@ -31,7 +31,7 @@ cd seed
 
 # 1) seed 테이블 등록 + ID 공간 확인 쿼리 생성
 ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries register --seed-name <name> --s3-path s3://ptbwa-dw/prod/seed_<name>/ --csv-filename <원본.csv> --header
-# -> queries/01_create_seed_table_<name>.sql, ../eda/queries/NN_seed_<name>_id_space_check.sql
+# -> queries/01_create_seed_table_<name>.sql, ../eda/queries/id_space_check/NN_seed_<name>_id_space_check.sql
 #    생성됨. 원본 CSV를 그 S3 경로에 올리고, 두 SQL을 Athena 콘솔에서 순서대로 실행한다.
 
 # 2) id_space_check 결과 한 줄(seed_total ~ seed_matches_skb_uuid, 6개 숫자)을 그대로 붙여넣어

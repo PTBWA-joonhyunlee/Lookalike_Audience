@@ -7,7 +7,7 @@
      1) data/seed/00_shoplinker_seed.csv를 S3에 업로드한다: s3://ptbwa-dw/prod/seed_shoplinker/
         (경로가 다르면 아래 LOCATION만 그에 맞게 수정)
      2) 아래 DDL을 Athena 콘솔에서 실행한다.
-     3) eda/queries/29_seed_shoplinker_id_space_check.sql로 이 seed의 device_ifa가 어떤 ID 공간에 있는지 확인한다(raw GAID인지,
+     3) eda/queries/id_space_check/15_seed_shoplinker_id_space_check.sql로 이 seed의 device_ifa가 어떤 ID 공간에 있는지 확인한다(raw GAID인지,
         크로스워크가 필요한지) — 이 확인 전에는 02_create_seed_ad_id_table_shoplinker.sql을
         작성/실행하지 말 것. 결과 한 줄을 받으면
         `pipeline.generate_seed_queries resolve --seed-name shoplinker --matches ...`로

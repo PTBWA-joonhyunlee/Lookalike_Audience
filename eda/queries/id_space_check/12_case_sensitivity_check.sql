@@ -1,5 +1,6 @@
 /* ============================================================
-   19_case_sensitivity_check.sql (eda, 구 09_case_sensitivity_check.sql)
+   id_space_check/12_case_sensitivity_check.sql (eda, 구 eda/queries/19_case_sensitivity_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 09_case_sensitivity_check.sql)
    배경: 08c_candidate_segment.sql 결과(132,897명, 08a 843만 명 대비 1.6% — 일반
    모집단 기준 세그먼트 커버리지 21.8%보다 훨씬 낮음)를 조사하다가, 매칭된 device_ifa가
    전부 소문자임을 확인했다(로컬 CSV 검증) — skp.ad_id/skb.ad_id 공간이 소문자

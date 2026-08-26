@@ -1,5 +1,6 @@
 /* ============================================================
-   11_seed_skp_id_type_check.sql (eda, 구 propfit/seed_lookalike/02b_seed_skp_id_type_check.sql)
+   id_space_check/04_seed_skp_id_type_check.sql (eda, 구 eda/queries/11_seed_skp_id_type_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 propfit/seed_lookalike/02b_seed_skp_id_type_check.sql)
    배경: 01_seed_coverage_check.sql 결과 — seed_in_segments=1(0.0%), 비정상적으로 낮음
    (자세한 배경은 02_seed_segment_anomaly_check.sql 참고 — Athena가 한 파일에
    statement 하나만 허용해 (A)/(B)를 파일로 분리했다).

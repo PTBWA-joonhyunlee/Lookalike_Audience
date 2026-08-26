@@ -1,10 +1,11 @@
 /* ============================================================
-   21_group_coverage_full_population.sql (eda)
+   segment_coverage/09_group_coverage_full_population.sql (eda, 구 eda/queries/21_group_coverage_full_population.sql —
+   2026-08-26 segment_coverage/ 폴더 이동 + 번호 재부여)
    목적: `summary_note/` 요약 문서용 — "세그먼트가 하나라도 있는 전체 모집단
    (~53,341,243명)" 중, 6개 그룹(성별/연령대/거주/제품 관심사/콘텐츠 관심사/기타)
    각각에 최소 1개 태그라도 있는 사람 비율을 정확히 잰다.
 
-   `21_group_value_distribution.sql`(개별 세그먼트 ID별 집계)만으로는 이 수치를 못 낸다 —
+   `08_group_value_distribution.sql`(개별 세그먼트 ID별 집계)만으로는 이 수치를 못 낸다 —
    한 사람이 그룹 안에서 여러 세그먼트 ID를 동시에 가질 수 있어서, 개별 ID들의 device_cnt를
    단순히 더하면 중복 집계가 된다. array_intersect + cardinality > 0으로 "그룹 안에 하나라도
    있는지"를 사람 단위로 직접 세야 정확하다.

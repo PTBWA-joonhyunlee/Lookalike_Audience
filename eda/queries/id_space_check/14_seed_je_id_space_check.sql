@@ -1,11 +1,13 @@
 /* ============================================================
-   28_seed_je_id_space_check.sql (eda, je 신규 seed — 09_seed_coverage_check.sql +
-   12_seed_skb_crosswalk_check.sql[피엘라벤]을 합친 버전)
+   id_space_check/14_seed_je_id_space_check.sql (eda, 구 eda/queries/28_seed_je_id_space_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여. je 신규 seed —
+   id_space_check/02_seed_coverage_check.sql + id_space_check/05_seed_skb_crosswalk_check.sql
+   [피엘라벤]을 합친 버전)
    배경: je_sample_adid.csv(1,923개 device_ifa, seed/queries/01_create_seed_table_je.sql로
    등록)가 어떤 ID 공간에 있는지 아직 확인 안 됨. 피엘라벤 seed는 겉보기엔 UUID였지만
    실제로는 raw GAID(propfit.skp.ad_id/ptbwa_skb.ad_id) 공간이 아니라
    ptbwa_skb.platform_ad_id 공간이었다(직접 조인 0.0% vs 크로스워크 후 61%,
-   ../docs/id_space_crosswalk.md 참고) — 매칭 건수만으로 "같은 공간"이라 추론하지 말고
+   ../../docs/id_space_crosswalk.md 참고) — 매칭 건수만으로 "같은 공간"이라 추론하지 말고
    이 seed도 동일하게 검증한다.
 
    판정 기준:

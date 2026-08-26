@@ -20,4 +20,5 @@ carrier)과 이를 확장한 `04a_seed_profile.sql`/`05a_pool_profile.sql`/
 계획이 없어서다. 필요해지면 git 히스토리에서 복구 가능.
 
 이 쿼리들 자체를 확정하기까지의 진단/EDA 쿼리(ID 공간 크로스워크 검증, 세그먼트 커버리지
-실측 등)와 그 결론은 `eda/queries/00~08`, `eda/docs/`에 있다.
+실측 등)와 그 결론은 `eda/queries/id_space_check/`, `eda/queries/segment_coverage/`,
+`eda/docs/`에 있다.

@@ -1,5 +1,6 @@
 /* ============================================================
-   18_seed_crosswalk_check_deduped.sql (eda, 구 02i_seed_crosswalk_check_deduped.sql)
+   id_space_check/11_seed_crosswalk_check_deduped.sql (eda, 구 eda/queries/18_seed_crosswalk_check_deduped.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 02i_seed_crosswalk_check_deduped.sql)
    배경: 02g/02h에서 seed_crosswalked_to_ad_id=2,519,634로 seed_total(1,518,101)보다
    컸다 — ptbwa_skb에서 platform_ad_id 하나가 여러 ad_id로 매핑되는 fan-out(1:N)이
    있다는 뜻. 02g/02h는 "distinct ad_id 몇 개가 맞았나"를 셌기 때문에 fan-out 때문에

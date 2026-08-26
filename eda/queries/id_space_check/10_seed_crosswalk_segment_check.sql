@@ -1,5 +1,6 @@
 /* ============================================================
-   17_seed_crosswalk_segment_check.sql (eda, 구 02h_seed_crosswalk_segment_check.sql)
+   id_space_check/10_seed_crosswalk_segment_check.sql (eda, 구 eda/queries/17_seed_crosswalk_segment_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 02h_seed_crosswalk_segment_check.sql)
    배경: 02g와 같은 크로스워크(seed → skb.platform_ad_id → skb.ad_id)를 쓰되, 이번엔
    그 ad_id를 propfit.skp.ad_id(세그먼트)에 직접 붙인다 — 01_seed_coverage_check.sql의
    직접 조인(seed.device_ifa = skp.ad_id)이 1건만 나온 문제를 이 크로스워크로 우회할

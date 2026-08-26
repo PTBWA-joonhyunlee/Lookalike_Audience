@@ -7,11 +7,11 @@
 --
 -- (A) 인구통계 도달 퍼널: bid log → skb 크로스워크 → ptbwa_tg. reached_crosswalk/
 --   reached_demographics가 bid_devices 대비 너무 작으면(예: 한 자릿수 %) bullet 2
---   (gender/age 보강)의 실효성 자체를 재검토해야 한다 — 00_id_mapping_check.sql에서
+--   (gender/age 보강)의 실효성 자체를 재검토해야 한다 — id_space_check/01_id_mapping_check.sql에서
 --   ptbwa_tg↔skb 매칭(424,718)이 skp↔skb 매칭(수십억)보다 훨씬 작게 나온 전례가 있어서
 --   커버리지가 얇을 가능성을 미리 염두에 둘 것.
 -- (B) 01↔03 device_ifa 오버랩: 세그먼트가 bid log 모집단을 얼마나 커버하는지 보여줄 뿐
---   아니라, abi_bid_log_flatten.device_ifa = ptbwa_skb.ad_id라는 전제(00_id_mapping_check.sql
+--   아니라, abi_bid_log_flatten.device_ifa = ptbwa_skb.ad_id라는 전제(id_space_check/01_id_mapping_check.sql
 --   이 검증 못한 부분, 사용자 제공 원본 쿼리 그대로 가정 중)가 맞는지도 간접 확인해준다 —
 --   오버랩이 거의 0이면 이 전제 자체가 틀렸다는 신호.
 -- ============================================================

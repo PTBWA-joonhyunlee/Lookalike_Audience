@@ -1,5 +1,6 @@
 -- ============================================================
--- 00_id_mapping_check.sql (propfit)
+-- id_space_check/01_id_mapping_check.sql (propfit, 구 00_id_mapping_check.sql —
+-- 2026-08-26 eda/queries 재정리로 id_space_check/ 폴더 이동 + 번호 재부여)
 -- 목적: 01_user_profile.sql / 03_user_segments.sql이 쓰는 ptbwa_skb 크로스워크 조인 키가
 --       맞는지 확인하는 진단 쿼리. 결과 실행 전까지는 절대 확정하지 말 것.
 --

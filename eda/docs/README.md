@@ -15,9 +15,20 @@
 
 ## 쿼리 (`eda/queries/`)
 
-`00~08`은 2026-07-24 propfit 소스 피처 설계 검토(`202607240935.md`/`segment_distribution_report.md`
-배경), `09~20`은 2026-07-29~30 피엘라벤 seed ID 공간/표본 조사(`id_space_crosswalk.md`/
-`sampling_bugs.md` 배경)다. 번호와 문서의 대응은 각 문서 본문에 쿼리 파일명으로 명시돼 있다.
+2026-08-26에 용도별로 하위 폴더 두 개로 재정리했다(번호는 각 폴더 안에서 01부터 다시
+매김 — 이전 평면 번호와의 대응은 각 파일 헤더의 "구 eda/queries/NN" 주석 참고):
+
+- **`segment_coverage/`**(01~11) — skp 세그먼트 보유율·값 분포 확인용. 2026-07-24 propfit
+  소스 피처 설계 검토(`202607240935.md`/`segment_distribution_report.md` 배경, 舊 00~08)
+  + 이후 전체/seed 모집단 커버리지 실측(舊 21, 26, 27).
+- **`id_space_check/`**(01~15) — seed device_ifa가 어떤 ID 공간에 있는지(raw GAID 직접 vs
+  skb 크로스워크 필요) 확인용. 2026-07-29~30 피엘라벤 seed ID 공간/표본 조사
+  (`id_space_crosswalk.md`/`sampling_bugs.md` 배경, 舊 00, 09~20) + 이후 신규 seed마다
+  반복 실행하는 `pipeline/generate_seed_queries.py` 자동 생성 쿼리(舊 28, 29 — je/shoplinker).
+
+media 트랙 관련 진단 쿼리(舊 22~25, "6월 신규 유저" segment/media 커버리지·top30 미디어
+분석)는 2026-08-26 media 트랙 삭제와 함께 제거했다(필요하면 git 히스토리에서 복구 가능,
+`eda/docs/20260804_candidate_202606_segment_media_coverage.md`는 결론 기록으로 남겨둠).
 
 ## `assets/`
 

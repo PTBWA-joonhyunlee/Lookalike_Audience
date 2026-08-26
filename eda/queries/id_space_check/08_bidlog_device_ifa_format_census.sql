@@ -1,5 +1,6 @@
 /* ============================================================
-   15_bidlog_device_ifa_format_census.sql (eda, 구 02f_bidlog_device_ifa_format_census.sql)
+   id_space_check/08_bidlog_device_ifa_format_census.sql (eda, 구 eda/queries/15_bidlog_device_ifa_format_census.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 02f_bidlog_device_ifa_format_census.sql)
    배경: data/sample/prod-ptbwa-dw.abi_bid_log_flatten.csv 샘플에서 device_ifa 값이
    "AD8Fdm6grhzH7y5nBbI_dmm..." 같은 70자대 문자열로 보인 행이 있었다(UUID 형식 아님) —
    즉 abi_bid_log_flatten.device_ifa 자체가 raw GAID/IDFA와 다른 형식의 ID가 섞인

@@ -1,5 +1,6 @@
 /* ============================================================
-   09_seed_coverage_check.sql (eda, 구 propfit/seed_lookalike/01_seed_coverage_check.sql)
+   id_space_check/02_seed_coverage_check.sql (eda, 구 eda/queries/09_seed_coverage_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 propfit/seed_lookalike/01_seed_coverage_check.sql)
    목적: 피엘라벤 seed(150만 device_ifa, 외부 소스)가 실제로 이 프로젝트의 피처 소스
    (abi_bid_log_flatten → 01/02, propfit.skp → 11)에서 얼마나 매칭되는지 확인한다.
    매칭률이 너무 낮으면(예전 ptbwa_tg 사례처럼 한 자릿수 % 이하) 이 소스로는 학습이

@@ -1,7 +1,7 @@
 /* ============================================================
    02_create_seed_ad_id_table_shoplinker.sql (seed, shoplinker 신규 seed — 크로스워크
    불필요, pipeline/generate_seed_queries.py가 id space 판정 결과로 자동 생성)
-   판정 근거(eda/queries id_space_check 결과, seed_total=232366):
+   판정 근거(eda/queries/id_space_check 결과, seed_total=232366):
    direct 매칭률(skp_direct/skb_ad_id 중 최댓값)=100.0% — 임계값
    10% 이상이라 이미 raw GAID(device_ifa) 공간으로 판정, skb 크로스워크
    없이 정규식 필터 + DISTINCT만 쓴다.

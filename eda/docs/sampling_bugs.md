@@ -40,7 +40,7 @@ Trino의 `mod()`는 피연산자 부호를 따라가는데 `xxhash64`/`from_big_
 대문자/소문자가 같은 물리 기기를 가리키는 게 아님은 먼저 확인됨(대문자를 소문자로
 바꿔도 자연 소문자 집합과의 겹침이 150만 개 중 16개뿐, 즉 서로 다른 기기).
 
-`eda/queries/19_case_sensitivity_check.sql`(seed↔bidlog)/`20_candidate_segment_case_check.sql`
+`eda/queries/id_space_check/12_case_sensitivity_check.sql`(seed↔bidlog)/`13_candidate_segment_case_check.sql`
 (candidates↔skp)로 대소문자 구분 vs 무시 조인을 직접 비교한 결과 **완전히 기각**:
 
 | 쿼리 | 대소문자 구분 | 대소문자 무시 | 차이 |

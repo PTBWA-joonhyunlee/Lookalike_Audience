@@ -1,5 +1,6 @@
 /* ============================================================
-   10_seed_bidlog_os_check.sql (eda, 구 propfit/seed_lookalike/02a_seed_bidlog_os_check.sql)
+   id_space_check/03_seed_bidlog_os_check.sql (eda, 구 eda/queries/10_seed_bidlog_os_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 propfit/seed_lookalike/02a_seed_bidlog_os_check.sql)
    배경: 01_seed_coverage_check.sql 결과 — seed_in_bidlog=135,165(8.9%),
    seed_in_segments=1(0.0%). bidlog는 그럭저럭 매칭되는데 segments(propfit.skp)는
    거의 0에 가까워 이상하다(자세한 배경은 02_seed_segment_anomaly_check.sql 참고 —

@@ -2,7 +2,7 @@
 
 ## 0. 목표
 
-새 브랜드 seed(`je_sample_adid.csv`, raw GAID 1,922명 — [`eda/queries/28_seed_je_id_space_check.sql`](../eda/queries/28_seed_je_id_space_check.sql)로 크로스워크 불필요 확인됨)를 피엘라벤
+새 브랜드 seed(`je_sample_adid.csv`, raw GAID 1,922명 — [`eda/queries/id_space_check/14_seed_je_id_space_check.sql`](../eda/queries/id_space_check/14_seed_je_id_space_check.sql)로 크로스워크 불필요 확인됨)를 피엘라벤
 트랙에 붙여 lookalike 후보를 뽑았다. 1차 스코어링(candidate 664,684명, 06월만) 결과
 상위20%가 목표(30만 명)에 크게 못 미쳐, candidate 모집단을 06월→06~08월18일로 넓히고
 **같은 김에 seed_je도 candidate 제외 조건에 추가**(1차 때 발견된 "candidate에 je seed

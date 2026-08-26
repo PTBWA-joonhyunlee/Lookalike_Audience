@@ -1,6 +1,6 @@
 # 세그먼트 그룹별 분포 분석
 
-날짜: 2026-07-24. 관련 코드: [`eda/queries/08_group_value_distribution.sql`](../queries/08_group_value_distribution.sql)
+날짜: 2026-07-24. 관련 코드: [`eda/queries/segment_coverage/08_group_value_distribution.sql`](../queries/segment_coverage/08_group_value_distribution.sql)
 (구 `querys/propfit/10_group_value_distribution.sql`),
 생성 스크립트: [`../assets/_gen_segment_report.py`](../assets/_gen_segment_report.py).
 

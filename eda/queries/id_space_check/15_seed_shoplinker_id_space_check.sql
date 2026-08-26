@@ -1,6 +1,7 @@
 /* ============================================================
-   29_seed_shoplinker_id_space_check.sql (eda, shoplinker 신규 seed —
-   pipeline/generate_seed_queries.py가 28_seed_je_id_space_check.sql을 템플릿 삼아 자동 생성)
+   id_space_check/15_seed_shoplinker_id_space_check.sql (eda, 구 eda/queries/29_seed_shoplinker_id_space_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여. shoplinker 신규 seed —
+   pipeline/generate_seed_queries.py가 (당시) 28_seed_je_id_space_check.sql을 템플릿 삼아 자동 생성)
    목적: seed_shoplinker(seed/queries/01_create_seed_table_shoplinker.sql로 등록)의
    device_ifa가 어떤 ID 공간에 있는지 확인한다 — 매칭 건수만으로 "같은 공간"이라 추론하지
    않고 직접/크로스워크 후보를 모두 카운트해서 비교한다(피엘라벤 seed가 겉보기엔 UUID였지만

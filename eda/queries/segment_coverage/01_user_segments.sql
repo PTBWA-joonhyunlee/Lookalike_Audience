@@ -4,7 +4,7 @@
 -- 스코프 : 라벨/지도학습 없이 피처 설계만 검토(2026-07-23 확정).
 -- 소스   : "propfit"."skp" — DB/테이블명은 샘플 CSV 파일명 추정치, 실제 카탈로그와
 --          다르면 고칠 것.
--- ID 공간 확인됨(00_id_mapping_check.sql 결과, 2026-07-23): skp.ad_id는 ptbwa_skb.ad_id와
+-- ID 공간 확인됨(id_space_check/01_id_mapping_check.sql 결과, 2026-07-23): skp.ad_id는 ptbwa_skb.ad_id와
 --          매칭되고(제외한 깨진 파티션 빼고 스캔 시 수십억 건 매칭 vs platform_ad_id
 --          기준은 66건뿐 — 노이즈 수준), ptbwa_skb.ad_id는 abi_bid_log_flatten.device_ifa와
 --          같은 공간(사용자 제공 원본 쿼리 전제)이므로 skp.ad_id는 device_ifa와 곧바로
@@ -18,7 +18,7 @@
 --          썼으니, 실제 코드표(1=IDFA, 2=ADID 등)가 있으면 그걸로 교체할 것.
 -- 기간   : skp는 스냅샷 성격 테이블이라(01_user_profile.sql의 ptbwa_tg/ptbwa_skb와 동일
 --          취급) year/month로 좁히지 않고 유저(ad_id)별 최신 파티션 1건만 남긴다. 대신
---          00_id_mapping_check.sql에서 이미 확인한 대로 year=2024/month=12/day=31 파티션의
+--          id_space_check/01_id_mapping_check.sql에서 이미 확인한 대로 year=2024/month=12/day=31 파티션의
 --          .tmp 파일이 깨져 있어(HIVE_CURSOR_ERROR) 그 파티션만 명시적으로 제외한다.
 --          ⚠ 여기서 year='2026' 같은 기간 필터를 다시 넣지 말 것 — skp 샘플/진단 결과 모두
 --          2024년대 데이터만 확인됐고, 2026년 필터를 걸면 "세그먼트가 없어서"가 아니라

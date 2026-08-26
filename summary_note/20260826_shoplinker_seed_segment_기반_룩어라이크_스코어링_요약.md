@@ -22,7 +22,7 @@ top15%/top30% 추출은 그 모델을 그대로 재사용(재학습 없음)했�
 
 ## 1. ID 공간 판정
 
-[`eda/queries/29_seed_shoplinker_id_space_check.sql`](../eda/queries/29_seed_shoplinker_id_space_check.sql) 결과:
+[`eda/queries/id_space_check/15_seed_shoplinker_id_space_check.sql`](../eda/queries/id_space_check/15_seed_shoplinker_id_space_check.sql) 결과:
 
 | seed_total | bidlog | skp_direct | skb_ad_id | skb_platform_ad_id | skb_uuid |
 |---|---|---|---|---|---|

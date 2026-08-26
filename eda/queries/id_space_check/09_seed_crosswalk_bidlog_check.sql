@@ -1,8 +1,9 @@
 /* ============================================================
-   16_seed_crosswalk_bidlog_check.sql (eda, 구 02g_seed_crosswalk_bidlog_check.sql)
+   id_space_check/09_seed_crosswalk_bidlog_check.sql (eda, 구 eda/queries/16_seed_crosswalk_bidlog_check.sql —
+   2026-08-26 id_space_check/ 폴더 이동 + 번호 재부여, 그 이전엔 02g_seed_crosswalk_bidlog_check.sql)
    배경: 02c 결과 — seed가 skb.ad_id와는 0건, skb.platform_ad_id와는 928,809건(61.2%)
    매칭됐다. 즉 seed의 device_ifa는 raw GAID(ad_id) 공간이 아니라 platform_ad_id
-   공간에 있다(00_id_mapping_check.sql이 확인한 ptbwa_tg.uuid와 같은 공간).
+   공간에 있다(01_id_mapping_check.sql이 확인한 ptbwa_tg.uuid와 같은 공간).
 
    가설: seed → skb.platform_ad_id로 매칭되는 행의 skb.ad_id를 뽑으면, 그게 진짜
    GAID이므로 abi_bid_log_flatten.device_ifa(01_seed_coverage_check.sql에서 직접

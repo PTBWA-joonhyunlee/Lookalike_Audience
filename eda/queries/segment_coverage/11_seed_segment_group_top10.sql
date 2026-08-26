@@ -1,6 +1,7 @@
 /* ============================================================
-   27_seed_segment_group_top10.sql (eda, 2026-08-06)
-   목적: 26_seed_segment_group_coverage.sql과 같은 모집단(피엘라벤 seed 중 GAID 크로스워크
+   segment_coverage/11_seed_segment_group_top10.sql (eda, 구 eda/queries/27_seed_segment_group_top10.sql —
+   2026-08-26 segment_coverage/ 폴더 이동 + 번호 재부여, 2026-08-06)
+   목적: 10_seed_segment_group_coverage.sql과 같은 모집단(피엘라벤 seed 중 GAID 크로스워크
    성공 + skp segment 보유 기기) 안에서, 6개 segment 그룹(성별/연령대/거주/제품 관심사/
    콘텐츠 관심사/기타) 각각의 개별 segment_id 값 분포를 내고 그룹별 상위 10개만 남긴다.
 

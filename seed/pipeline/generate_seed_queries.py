@@ -22,7 +22,7 @@
 #   ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries register \
 #     --seed-name yeti --s3-path s3://ptbwa-dw/prod/seed_yeti/ --csv-filename yeti_seed.csv --header
 #
-#   (Athena에서 01_create_seed_table_yeti.sql, eda/queries/NN_seed_yeti_id_space_check.sql 실행 후)
+#   (Athena에서 01_create_seed_table_yeti.sql, eda/queries/id_space_check/NN_seed_yeti_id_space_check.sql 실행 후)
 #
 #   ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries resolve \
 #     --seed-name yeti --matches 3000 2800 2600 10 5 0
@@ -43,7 +43,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 SEED_QUERIES_DIR = PROJECT_ROOT / "seed" / "queries"
 SEGMENT_QUERIES_DIR = SEED_QUERIES_DIR / "segment"
-EDA_QUERIES_DIR = PROJECT_ROOT / "eda" / "queries"
+# 2026-08-26 eda/queries 재정리: id space 확인 쿼리는 eda/queries/id_space_check/ 밑에
+# 따로 모은다(seed 보유율/분포 확인용 쿼리는 eda/queries/segment_coverage/로 분리) —
+# 번호는 이 하위 폴더 안에서만 이어서 매긴다.
+EDA_QUERIES_DIR = PROJECT_ROOT / "eda" / "queries" / "id_space_check"
 
 # segment 쿼리는 세그먼트 taxonomy(gender/age/residence/product/content/etc ID 배열)를
 # 그대로 복사해야 해서 손으로 다시 옮기면 사고가 나기 쉽다 — je 버전을 "정본 템플릿"으로
@@ -54,8 +57,8 @@ CANDIDATE_TABLE_PATH = SEGMENT_QUERIES_DIR / "03_create_candidate_table.sql"
 
 BLOCK_COMMENT_END = "   ============================================================ */"
 
-# "수십 % 이상이면 같은 공간" 휴리스틱(eda/queries/28_seed_je_id_space_check.sql 판정 기준
-# 문서화 그대로)을 10%로 수치화했다 - je(60.2%)/피엘라벤 크로스워크(0.0% -> 61.0%) 둘 다
+# "수십 % 이상이면 같은 공간" 휴리스틱(eda/queries/id_space_check/14_seed_je_id_space_check.sql
+# 판정 기준 문서화 그대로)을 10%로 수치화했다 - je(60.2%)/피엘라벤 크로스워크(0.0% -> 61.0%) 둘 다
 # 이 임계값으로 명확히 갈린다. 애매하면(둘 다 임계값 미만, 또는 둘 다 이상) 자동 판정을
 # 멈추고 사람이 보게 한다.
 DIRECT_THRESHOLD = 0.10
@@ -74,7 +77,7 @@ def render_create_seed_table_sql(seed_name: str, s3_path: str, csv_filename: str
                                   has_header: bool = True, id_space_check_filename: str = None) -> str:
     csv_note = f"data/seed/{csv_filename}" if csv_filename else "신규 seed CSV"
     header_note = "헤더가 있어 skip.header.line.count로 건너뛴다" if has_header else "헤더가 없다고 가정한다(있다면 --header 옵션을 켤 것)"
-    next_step = f"eda/queries/{id_space_check_filename}" if id_space_check_filename else "eda/queries/의 id_space_check 쿼리"
+    next_step = f"eda/queries/id_space_check/{id_space_check_filename}" if id_space_check_filename else "eda/queries/id_space_check/의 id_space_check 쿼리"
     tblproperties = "\nTBLPROPERTIES ('skip.header.line.count' = '1');" if has_header else ";"
 
     return f"""/* ============================================================
@@ -374,7 +377,7 @@ def cmd_resolve(seed_name: str, matches: list) -> None:
 
     if decision["mode"] == "ambiguous":
         print("[중단] 자동 판정 불가 — direct/crosswalk 매칭률이 임계값 기준으로 애매합니다. "
-              "eda/queries의 id_space_check 결과를 직접 보고 02_create_seed_ad_id_table_"
+              "eda/queries/id_space_check/의 id_space_check 결과를 직접 보고 02_create_seed_ad_id_table_"
               f"{seed_name}.sql을 수동으로 작성하세요(je/피엘라벤 버전을 참고).")
         return
 
