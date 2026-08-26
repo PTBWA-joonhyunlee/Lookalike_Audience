@@ -4,9 +4,9 @@
 # 생성한다. 이 repo는 Athena 접근 권한이 없어 실행 자체는 여전히 사용자가 콘솔에서 해야
 # 하지만(CLAUDE.md "데이터를 얻는 방법" 참고), je seed(2026-08-19)에서 손으로 반복했던
 # 01_create_seed_table_*.sql / id_space_check 쿼리 / 02_create_seed_ad_id_table_*.sql
-# (직접/크로스워크 판정 포함) / segment 쿼리 / candidate 제외 조건 추가를 패턴화했다.
+# (직접/크로스워크 판정 포함) / segment 쿼리 / candidate 정의+피처 추출 쿼리를 패턴화했다.
 #
-# 두 단계로 나뉜다 — ID 공간(크로스워크 필요 여부)은 실제 쿼리 실행 결과를 봐야 판정할 수
+# 세 단계로 나뉜다 — ID 공간(크로스워크 필요 여부)은 실제 쿼리 실행 결과를 봐야 판정할 수
 # 있어 완전 자동화가 불가능하기 때문이다(eda/docs/id_space_crosswalk.md 참고, 매칭 건수만
 # 보고 "같은 공간"이라 추론하면 안 된다는 프로젝트 규칙):
 #
@@ -14,9 +14,14 @@
 #      -> 사용자가 둘 다 Athena에서 실행하고, id space 쿼리 결과 한 줄(seed_total부터
 #         seed_matches_skb_uuid까지 6개 숫자)을 받아온다.
 #   2) resolve: 그 6개 숫자를 --matches로 넘기면 직접/크로스워크를 자동 판정해서
-#      02_create_seed_ad_id_table_<name>.sql / segment 쿼리를 생성하고,
-#      segment/03_create_candidate_table.sql에 이 seed 제외 조건을 자동으로 추가한다
-#      (이미 추가돼 있으면 건드리지 않음 - 여러 번 실행해도 안전).
+#      02_create_seed_ad_id_table_<name>.sql / segment 쿼리를 생성한다.
+#   3) candidate: candidate 정의(bid log 기간 + region/OS + skp 세그먼트 보유 + 기존
+#      seed 전부 제외) + 세그먼트 피처 추출을 CREATE TABLE 없이 SELECT 하나로 합쳐 생성한다
+#      (2026-08-26부터 — 그 전엔 03_create_candidate_table.sql로 후보 테이블을 만들고
+#      04_candidate_segment.sql로 다시 피처를 뽑는 2단계였다. 옛 파일들은 이미 실행된 seed의
+#      provenance라 건드리지 않고 그대로 둔다). 제외할 기존 seed 목록은
+#      seed/queries/02_create_seed_ad_id_table*.sql을 스캔해 자동으로 구한다 — 새 seed가
+#      생길 때마다 이 목록도 자동으로 늘어난다.
 #
 # 실행(seed/ 안에서 cd 후):
 #   ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries register \
@@ -26,18 +31,23 @@
 #
 #   ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries resolve \
 #     --seed-name yeti --matches 3000 2800 2600 10 5 0
+#
+#   (Athena에서 02_create_seed_ad_id_table_yeti.sql, segment/02_seed_segment_yeti.sql 실행 후)
+#
+#   ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries candidate \
+#     --seed-name yeti --period-start 2026-06-01 --period-end 2026-08-24
 
 import argparse
+import re
 import sys
-from datetime import date
 from pathlib import Path
 
 from scoring.config import PROJECT_ROOT
 
 # Windows 콘솔(cp949)은 이 파일의 안내 메시지에 쓰는 em dash/화살표 등을 인코딩하지 못해
 # print()가 UnicodeEncodeError로 죽는다 — 이미 파일 쓰기(write_text, 항상 UTF-8)는 끝난
-# 뒤에 죽는 경우가 있어(patch_candidate_table_exclusion 등) "실패한 것처럼 보이지만 실제로는
-# 파일이 이미 바뀐" 혼란스러운 상태를 만든다. stdout을 UTF-8로 강제해 이 크래시를 막는다.
+# 뒤에 죽는 경우가 있어 "실패한 것처럼 보이지만 실제로는 파일이 이미 바뀐" 혼란스러운
+# 상태를 만든다. stdout을 UTF-8로 강제해 이 크래시를 막는다.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -48,12 +58,11 @@ SEGMENT_QUERIES_DIR = SEED_QUERIES_DIR / "segment"
 # 번호는 이 하위 폴더 안에서만 이어서 매긴다.
 EDA_QUERIES_DIR = PROJECT_ROOT / "eda" / "queries" / "id_space_check"
 
-# segment 쿼리는 세그먼트 taxonomy(gender/age/residence/product/content/etc ID 배열)를
-# 그대로 복사해야 해서 손으로 다시 옮기면 사고가 나기 쉽다 — je 버전을 "정본 템플릿"으로
-# 읽어서 seed_je_ad_id만 치환한다(je 버전 자체가 이미 taxonomy 변경 없이 피엘라벤 원본을
-# 그대로 복사한 것이므로 신뢰 가능).
+# segment/candidate 쿼리는 세그먼트 taxonomy(gender/age/residence/product/content/etc ID
+# 배열)를 그대로 복사해야 해서 손으로 다시 옮기면 사고가 나기 쉽다 — je 버전을 "정본
+# 템플릿"으로 읽어서 필요한 부분만 치환한다(je 버전 자체가 이미 taxonomy 변경 없이
+# 피엘라벤 원본을 그대로 복사한 것이므로 신뢰 가능).
 SEGMENT_TEMPLATE_PATH = SEGMENT_QUERIES_DIR / "02_seed_segment_je.sql"
-CANDIDATE_TABLE_PATH = SEGMENT_QUERIES_DIR / "03_create_candidate_table.sql"
 
 BLOCK_COMMENT_END = "   ============================================================ */"
 
@@ -325,51 +334,6 @@ def render_segment_query(seed_name: str) -> str:
     return _render_from_template(SEGMENT_TEMPLATE_PATH, seed_name, header)
 
 
-def patch_candidate_table_exclusion(seed_name: str, candidate_table_path: Path = CANDIDATE_TABLE_PATH) -> bool:
-    """candidate 정의(segment/03_create_candidate_table.sql)에 seed_<name>_ad_id 제외 조건을
-    추가한다 — je 때 손으로 했던 'LEFT JOIN seed_je_ad_id ... AND sj.device_ifa IS NULL'
-    추가를 패턴화했다. 이미 추가돼 있으면 아무것도 하지 않고 False를 반환(여러 번 실행해도
-    안전)."""
-    text = candidate_table_path.read_text(encoding="utf-8")
-    ad_id_table = f"seed_{seed_name}_ad_id"
-    if ad_id_table in text:
-        print(f"[SKIP] {candidate_table_path.name}에 이미 {ad_id_table} 제외 조건이 있음")
-        return False
-
-    lines = text.splitlines(keepends=True)
-    join_idx = [i for i, l in enumerate(lines) if l.strip().startswith("LEFT JOIN seed_") and "_ad_id" in l]
-    is_null_idx = [i for i, l in enumerate(lines)
-                   if l.strip().startswith("AND") and "device_ifa IS NULL" in l]
-    if not join_idx or not is_null_idx:
-        raise ValueError(
-            f"{candidate_table_path}에서 기존 'LEFT JOIN seed_*_ad_id' 또는 "
-            f"'AND s*.device_ifa IS NULL' 패턴을 찾지 못함 — 파일 구조가 바뀐 것으로 보임, "
-            f"수동으로 확인/추가할 것"
-        )
-
-    alias = f"s_{seed_name}"
-    lines.insert(join_idx[-1] + 1, f"LEFT JOIN {ad_id_table} {alias} ON b.device_ifa = {alias}.device_ifa\n")
-    # 위에서 한 줄 삽입했으니 WHERE 절 인덱스가 하나 밀림
-    is_null_idx = [i for i, l in enumerate(lines)
-                   if l.strip().startswith("AND") and "device_ifa IS NULL" in l]
-    lines.insert(is_null_idx[-1] + 1, f"  AND {alias}.device_ifa IS NULL\n")
-
-    text = "".join(lines)
-    note = (
-        f"\n   {date.today().isoformat()} 수정(seed_{seed_name} 제외 추가, "
-        f"pipeline/generate_seed_queries.py 자동 생성): candidate가 신규 seed({seed_name}) 본인을 "
-        f"포함하지 않도록 LEFT JOIN {ad_id_table} + AND {alias}.device_ifa IS NULL을 추가했다.\n"
-        f"   **재실행 필요**: 이 파일, segment/04_candidate_segment.sql — candidate 모집단이 바뀌므로.\n"
-    )
-    idx = text.index(BLOCK_COMMENT_END)
-    text = text[:idx] + note + text[idx:]
-
-    candidate_table_path.write_text(text, encoding="utf-8")
-    print(f"[OK] {candidate_table_path}에 {ad_id_table} 제외 조건 추가 완료 "
-          f"— 리뷰 후 Athena에서 재실행 필요(이 파일 + segment/04_candidate_segment.sql)")
-    return True
-
-
 def cmd_resolve(seed_name: str, matches: list) -> None:
     decision = decide_id_space(*matches)
     print(f"[판정] mode={decision['mode']} direct_rate={decision['direct_rate']:.1%} "
@@ -392,10 +356,166 @@ def cmd_resolve(seed_name: str, matches: list) -> None:
     segment_path.write_text(render_segment_query(seed_name), encoding="utf-8")
     print(f"[OK] {segment_path}")
 
-    patch_candidate_table_exclusion(seed_name)
+    print("[다음 단계] 위 SQL 둘을 Athena 콘솔에서 순서대로 실행 -> 결과 CSV(seed_segment_"
+          f"{seed_name}.csv)를 data/seed/에 받은 뒤, candidate 정의+피처 추출 쿼리를 생성:")
+    print(f"  ..\\.venv\\Scripts\\python.exe -m pipeline.generate_seed_queries candidate "
+          f"--seed-name {seed_name} --period-start <YYYY-MM-01> --period-end <YYYY-MM-DD>")
 
-    print("[다음 단계] 위 SQL들을 Athena 콘솔에서 순서대로 실행 -> 결과 CSV를 data/seed/에 "
-          f"받은 뒤: python -m pipeline.run_new_seed_pipeline --seed-name {seed_name}")
+
+# ---------- 3) candidate ----------
+
+_SEED_AD_ID_TABLE_RE = re.compile(r"CREATE TABLE\s+(seed_\w+_ad_id)", re.IGNORECASE)
+
+
+def _discover_seed_exclusions() -> list:
+    """seed/queries/02_create_seed_ad_id_table*.sql(피엘라벤의 접미사 없는 버전 포함)을 전부
+    스캔해 실제 CREATE TABLE 문에 쓰인 seed_<name>_ad_id 테이블명을 뽑는다 — candidate가
+    "seed 전부에 없는 신규 유저"가 되려면 이 목록 전체를 제외해야 하므로, 새 seed가 생길
+    때마다 하드코딩을 갱신할 필요 없이 이 목록도 같이 늘어나게 한다."""
+    found = []
+    for path in sorted(SEED_QUERIES_DIR.glob("02_create_seed_ad_id_table*.sql")):
+        m = _SEED_AD_ID_TABLE_RE.search(path.read_text(encoding="utf-8"))
+        if m and m.group(1) not in found:
+            found.append(m.group(1))
+    return found
+
+
+def _render_period_predicate(period_start: str, period_end: str) -> str:
+    """period_start/period_end: 'YYYY-MM-DD'. abi_bid_log_flatten의 year/month/day 파티션
+    필터 WHERE 절 조각을 만든다.
+
+    지원 범위(둘 다 위반하면 ValueError — 자동 생성 대신 03_create_candidate_table.sql
+    2026-08-25 수정 내역을 참고해 수동으로 작성할 것):
+    - 같은 연도 안에서만 지원한다(쿼리가 year='YYYY' 하나로 고정되므로 연도를 걸치는
+      기간은 지원 안 함).
+    - period_start는 항상 그 달의 1일이어야 한다(시작월 전체를 포함한다고 가정) — 일
+      단위 상한은 period_end(마지막 달)에만 건다(03의 04/01~08/24 패턴과 동일)."""
+    sy, sm, sd_ = period_start.split("-")
+    ey, em, ed_ = period_end.split("-")
+    if sy != ey:
+        raise ValueError(
+            f"기간이 연도를 걸칩니다({period_start}~{period_end}) — 이 쿼리는 year='{sy}' "
+            f"하나로 고정되므로 자동 생성 불가, 수동으로 작성할 것"
+        )
+    if sd_ != "01":
+        raise ValueError(
+            f"period_start({period_start})가 그 달의 1일이 아닙니다 — 이 생성기는 "
+            f"'시작월 전체(1일부터)'만 지원한다, 수동으로 작성할 것"
+        )
+    months = [f"{m:02d}" for m in range(int(sm), int(em) + 1)]
+    if len(months) == 1:
+        month_clause = f"b.month = '{months[0]}' AND CAST(b.day AS INTEGER) <= {int(ed_)}"
+    else:
+        full_list = ", ".join(f"'{m}'" for m in months[:-1])
+        month_clause = f"(b.month IN ({full_list}) OR (b.month = '{months[-1]}' AND CAST(b.day AS INTEGER) <= {int(ed_)}))"
+    return f"b.year = '{sy}'\n      AND {month_clause}"
+
+
+def render_candidate_segment_query(seed_name: str, period_start: str, period_end: str) -> str:
+    """candidate 정의(bid log 기간 + region=KR/OS=Android + skp 세그먼트 보유 + 기존 seed
+    전부 제외) + 세그먼트 피처 추출을 CREATE TABLE 없이 SELECT 하나로 합친다 —
+    03_create_candidate_table.sql(CTAS로 candidates_* 테이블 생성) + 04_candidate_segment.sql
+    (그 테이블을 다시 조회해 피처 추출) 2단계였던 걸 하나로 줄였다. skp 최신 레코드
+    (segments_latest1)를 "세그먼트 보유 여부 체크"와 "피처 추출" 양쪽에 재사용한다 — 단,
+    Trino/Athena가 두 번 참조되는 CTE를 한 번만 계산한다는 보장은 없어 스캔 비용 절감은
+    확정적이지 않다(확실한 이득은 Athena 실행 1회, candidates_* 테이블 생성/DROP 관리
+    불필요, "재실행 필요: 이 파일 + 04" 같은 이력 관리 부담이 없어진다는 것).
+
+    출력 컬럼은 04_candidate_segment.sql과 동일하다 — 결과를 그대로
+    data/seed/candidate_segment.csv로 받으면 기존 scoring 파이프라인과 호환된다."""
+    exclusions = _discover_seed_exclusions()
+    self_table = f"seed_{seed_name}_ad_id"
+    if self_table not in exclusions:
+        raise ValueError(
+            f"{self_table}이 seed/queries/02_create_seed_ad_id_table*.sql 중에 없습니다 — "
+            f"먼저 resolve로 02_create_seed_ad_id_table_{seed_name}.sql을 생성하고 Athena에서 "
+            f"실행했는지 확인할 것"
+        )
+
+    period_where = _render_period_predicate(period_start, period_end)
+
+    join_lines, null_lines = [], []
+    for tbl in exclusions:
+        alias = f"s_{tbl[len('seed_'):-len('_ad_id')]}"
+        join_lines.append(f"    LEFT JOIN {tbl} {alias} ON b.device_ifa = {alias}.device_ifa")
+        null_lines.append(f"      AND {alias}.device_ifa IS NULL")
+    joins_sql = "\n".join(join_lines)
+    nulls_sql = "\n".join(null_lines)
+    excluded_note = ", ".join(exclusions)
+
+    header = f"""/* ============================================================
+   segment/04_candidate_segment_{seed_name}.sql (seed, {seed_name} candidate 정의+세그먼트
+   피처 추출 통합 쿼리 — pipeline/generate_seed_queries.py candidate 명령으로 자동 생성)
+
+   PARAMETERS
+     SEED_NAME       = {seed_name}
+     PERIOD          = {period_start} ~ {period_end} (같은 연도 내에서만 지원, 시작일은
+                        항상 시작월 1일부터로 가정 — 다르면 수동으로 고칠 것)
+     EXCLUDED_SEEDS  = {excluded_note}
+                        (seed/queries/02_create_seed_ad_id_table*.sql 전체를 스캔해 자동
+                        도출 — 새 seed가 생기면 다음 생성 때 자동으로 포함된다)
+     FILTERS         = region=KR, OS=Android(device_osv 숫자), skp 세그먼트 보유,
+                        컴플라이언스(collect=1, lmt!=1), device_ifa UUID 형식
+
+   CREATE TABLE 없이 SELECT 하나로 candidate 정의와 세그먼트 피처 추출을 동시에 한다
+   (03_create_candidate_table.sql + 04_candidate_segment.sql을 합친 버전 — 그 두 파일은
+   이미 실행된 seed의 provenance 기록이라 건드리지 않고 그대로 둔다). ID 목록/taxonomy는
+   02_seed_segment_je.sql과 동일 — taxonomy가 바뀌면 전부 같이 갱신할 것.
+   ============================================================ */"""
+
+    candidates_block = f"""
+WITH segments_latest AS (
+    SELECT
+        ad_id AS device_ifa,
+        CAST(segments AS VARCHAR) AS segments,
+        ROW_NUMBER() OVER (
+            PARTITION BY ad_id
+            ORDER BY year DESC, month DESC, day DESC
+        ) AS rn
+    FROM "propfit"."skp"
+    WHERE NOT (year = '2024' AND month = '12' AND day = '31')   /* 깨진 .tmp 파티션만 제외 */
+      AND CAST(id_type AS VARCHAR) = '2'
+      AND ad_id IS NOT NULL AND trim(CAST(ad_id AS VARCHAR)) <> ''
+),
+segments_latest1 AS (
+    SELECT device_ifa, segments FROM segments_latest WHERE rn = 1
+),
+candidates AS (
+    SELECT DISTINCT b.device_ifa
+    FROM "prod-ptbwa-dw"."abi_bid_log_flatten" b
+{joins_sql}
+    JOIN segments_latest1 seg ON b.device_ifa = seg.device_ifa
+    WHERE {period_where}
+      AND b.device_ifa IS NOT NULL AND trim(CAST(b.device_ifa AS VARCHAR)) <> ''
+      AND regexp_like(CAST(b.device_ifa AS VARCHAR), '^[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}$')
+      AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
+      AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
+{nulls_sql}
+      AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
+      AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$')
+),
+seg1 AS (
+    SELECT c.device_ifa, split(sl.segments, ';') AS segment_ids
+    FROM candidates c
+    JOIN segments_latest1 sl ON c.device_ifa = sl.device_ifa
+),
+"""
+
+    template_text = SEGMENT_TEMPLATE_PATH.read_text(encoding="utf-8")
+    template_body = template_text.split(BLOCK_COMMENT_END, 1)[1]
+    matched_onward = template_body[template_body.index("matched AS ("):].strip()
+
+    return header + "\n" + candidates_block + matched_onward + "\n"
+
+
+def cmd_candidate(seed_name: str, period_start: str, period_end: str) -> None:
+    text = render_candidate_segment_query(seed_name, period_start, period_end)
+    path = SEGMENT_QUERIES_DIR / f"04_candidate_segment_{seed_name}.sql"
+    path.write_text(text, encoding="utf-8")
+    print(f"[OK] {path}")
+    print("[다음 단계] Athena 콘솔에서 실행(CREATE TABLE 없이 바로 결과 다운로드) -> "
+          "data/seed/candidate_segment.csv로 받은 뒤:")
+    print(f"  ..\\.venv\\Scripts\\python.exe -m pipeline.run_new_seed_pipeline --seed-name {seed_name}")
 
 
 def main():
@@ -410,17 +530,26 @@ def main():
     p_register.add_argument("--period-months", nargs=2, default=("04", "05"),
                              metavar=("START", "END"), help="id space 확인 시 bidlog 매칭 기간(기본 04 05)")
 
-    p_resolve = sub.add_parser("resolve", help="id space 결과로 ad_id/segment 쿼리 생성 + candidate 제외 조건 patch")
+    p_resolve = sub.add_parser("resolve", help="id space 결과로 ad_id/segment 쿼리 생성")
     p_resolve.add_argument("--seed-name", required=True)
     p_resolve.add_argument("--matches", nargs=6, type=int, required=True,
                             metavar=("SEED_TOTAL", "BIDLOG", "SKP_DIRECT", "SKB_AD_ID", "SKB_PLATFORM_AD_ID", "SKB_UUID"),
                             help="id_space_check 쿼리 결과 한 줄(SELECT 컬럼 순서 그대로)")
+
+    p_candidate = sub.add_parser("candidate", help="candidate 정의+segment 피처 추출 쿼리 생성(CREATE TABLE 없음)")
+    p_candidate.add_argument("--seed-name", required=True)
+    p_candidate.add_argument("--period-start", required=True, metavar="YYYY-MM-01",
+                              help="candidate 기간 시작 — 반드시 그 달의 1일")
+    p_candidate.add_argument("--period-end", required=True, metavar="YYYY-MM-DD",
+                              help="candidate 기간 끝(같은 연도) — 그 날짜까지 포함")
 
     args = parser.parse_args()
     if args.command == "register":
         cmd_register(args.seed_name, args.s3_path, args.csv_filename, args.header, tuple(args.period_months))
     elif args.command == "resolve":
         cmd_resolve(args.seed_name, args.matches)
+    elif args.command == "candidate":
+        cmd_candidate(args.seed_name, args.period_start, args.period_end)
 
 
 if __name__ == "__main__":

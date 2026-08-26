@@ -35,15 +35,20 @@ cd seed
 #    생성됨. 원본 CSV를 그 S3 경로에 올리고, 두 SQL을 Athena 콘솔에서 순서대로 실행한다.
 
 # 2) id_space_check 결과 한 줄(seed_total ~ seed_matches_skb_uuid, 6개 숫자)을 그대로 붙여넣어
-#    직접/크로스워크를 자동 판정 -> ad_id/segment 쿼리 생성 + candidate 제외 조건 patch
+#    직접/크로스워크를 자동 판정 -> ad_id/segment 쿼리 생성
 ..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries resolve --seed-name <name> --matches <seed_total> <bidlog> <skp_direct> <skb_ad_id> <skb_platform_ad_id> <skb_uuid>
 # -> queries/02_create_seed_ad_id_table_<name>.sql, queries/segment/02_seed_segment_<name>.sql
-#    생성 + queries/segment/03_create_candidate_table.sql에
-#    이 seed 제외 조건 자동 추가(patch). "판정 불가(ambiguous)"면 직접 id_space_check 결과를
-#    보고 02_create_seed_ad_id_table_<name>.sql을 수동 작성할 것(je/피엘라벤 버전 참고).
+#    생성됨. "판정 불가(ambiguous)"면 직접 id_space_check 결과를 보고
+#    02_create_seed_ad_id_table_<name>.sql을 수동 작성할 것(je/피엘라벤 버전 참고).
+#    두 SQL을 Athena 콘솔에서 순서대로 실행하고 seed_segment_<name>.csv를 ../data/seed/에 받는다.
 
-# 3) 위에서 생성된 SQL을 Athena 콘솔에서 순서대로 실행하고, 결과 CSV를 ../data/seed/에 받는다
-#    (seed_segment_<name>.csv 필수, candidate_segment.csv는 03 재실행했다면 다시 받을 것)
+# 3) candidate 정의(bid log 기간 + region=KR/OS=Android + skp 세그먼트 보유 + 기존 seed 전부
+#    제외) + segment 피처 추출을 CREATE TABLE 없이 SELECT 하나로 생성(2026-08-26부터 —
+#    옛 03_create_candidate_table.sql+04_candidate_segment.sql 2단계 방식은 이미 실행된
+#    seed의 provenance라 그대로 둠). 기간은 시작월 1일부터, 같은 연도 안에서만 지원.
+..\.venv\Scripts\python.exe -m pipeline.generate_seed_queries candidate --seed-name <name> --period-start <YYYY-MM-01> --period-end <YYYY-MM-DD>
+# -> queries/segment/04_candidate_segment_<name>.sql 생성됨. Athena 콘솔에서 실행하고
+#    (테이블 생성 없이 바로 결과 다운로드) ../data/seed/candidate_segment.csv로 받는다.
 
 # 4) 인코딩(기존 학습된 Autoencoder로 forward만) -> 분류기 학습(seed=1/pool=0) -> candidate
 #    스코어링 -> 상위 N% 추출을 한 번에 실행
@@ -79,7 +84,7 @@ scoring/
   infer_lookalike.py    candidate 스코어링 + 상위 후보 추출(--variant)
 pipeline/
   generate_seed_queries.py   신규 seed의 Athena SQL(seed 테이블/id space 확인/ad_id/segment/
-                              candidate 제외 patch)을 템플릿으로 생성(register/resolve)
+                              candidate 정의+피처 추출)을 템플릿으로 생성(register/resolve/candidate)
   run_new_seed_pipeline.py   신규 seed의 Python 단계(인코딩 -> 학습 -> 스코어링 -> top N)를
                               한 번에 실행 — "신규 seed가 들어왔을 때" 절 참고
 config/
