@@ -63,6 +63,24 @@ pool을 새로 뽑아야 할 만큼 크지 않다는 판단이 서면 그대로 
 재사용하는지, WeightedRandomSampler를 쓰는 이유 등)는 `../summary_note/`의 je 실험 요약
 문서 참고.
 
+## 겹치는 seed 여러 개를 한 번에 — 멀티라벨(멀티헤드) 분류기
+
+서로 겹치는 seed 여러 개(현재: 군 관련 4종 `military` — 전역남성/부모/곰신/입대예정)는
+seed별 이진 분류기 대신 공유 trunk + 라벨별 sigmoid 헤드 하나로 학습한다. 라벨 구성은
+`scoring/config.py`의 `MULTILABEL_VARIANTS`. 각 seed의 1)~2) 단계(Athena)는 위와 같고,
+candidate는 전 seed를 제외한 쿼리 하나를 공용으로 쓴다.
+
+```
+cd seed
+..\.venv\Scripts\python.exe -m pipeline.run_multilabel_pipeline --variant military --top-pct 10
+# (개별 실행: scoring.train_multilabel / scoring.infer_multilabel --variant military)
+```
+
+산출물(`../data/models/lookalike_multilabel_<variant>/`): `candidate_scores.csv`(전 후보 ×
+라벨별 `score_<key>`/`pct_<key>`/`top_label`), `candidate_scores_top<N>pct.csv`(라벨별 상위 N%
+합집합 + `in_top_<key>`/`selected_labels`), `top<N>pct_<key>.csv`(라벨별), `labels.json`(라벨
+정의 + 검증 AUC). `score_*`는 pos_weight 학습이라 라벨 간 비교 불가 — 라벨 간 비교는 `pct_*`로.
+
 ## 폴더 구조
 
 ```
@@ -82,11 +100,13 @@ scoring/
   config.py/model.py/dataset.py   지도학습 lookalike 분류기 정의(Variant로 seed마다 분리)
   train_lookalike.py    seed=1/pool=0으로 분류기 학습(--variant)
   infer_lookalike.py    candidate 스코어링 + 상위 후보 추출(--variant)
+  train_multilabel.py / infer_multilabel.py   멀티라벨(멀티헤드) 분류기 학습/스코어링
 pipeline/
   generate_seed_queries.py   신규 seed의 Athena SQL(seed 테이블/id space 확인/ad_id/segment/
                               candidate 정의+피처 추출)을 템플릿으로 생성(register/resolve/candidate)
   run_new_seed_pipeline.py   신규 seed의 Python 단계(인코딩 -> 학습 -> 스코어링 -> top N)를
                               한 번에 실행 — "신규 seed가 들어왔을 때" 절 참고
+  run_multilabel_pipeline.py 멀티라벨 variant의 인코딩 -> 학습 -> 라벨별 top N 일괄 실행
 config/
   train_config.example.json
 docs/

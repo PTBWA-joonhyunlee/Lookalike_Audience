@@ -21,10 +21,18 @@
 - **`segment_coverage/`**(01~11) — skp 세그먼트 보유율·값 분포 확인용. 2026-07-24 propfit
   소스 피처 설계 검토(`202607240935.md`/`segment_distribution_report.md` 배경, 舊 00~08)
   + 이후 전체/seed 모집단 커버리지 실측(舊 21, 26, 27).
-- **`id_space_check/`**(01~15) — seed device_ifa가 어떤 ID 공간에 있는지(raw GAID 직접 vs
+- **`id_space_check/`**(01~19) — seed device_ifa가 어떤 ID 공간에 있는지(raw GAID 직접 vs
   skb 크로스워크 필요) 확인용. 2026-07-29~30 피엘라벤 seed ID 공간/표본 조사
   (`id_space_crosswalk.md`/`sampling_bugs.md` 배경, 舊 00, 09~20) + 이후 신규 seed마다
-  반복 실행하는 `pipeline/generate_seed_queries.py` 자동 생성 쿼리(舊 28, 29 — je/shoplinker).
+  반복 실행하는 `pipeline/generate_seed_queries.py` 자동 생성 쿼리(舊 28, 29 — je/shoplinker,
+  16~19 — 군 관련 4종, 2026-09-28. 이때부터 skp 테이블명이 `propfit.ptbwa_skp`).
+
+실험 기록: `20260928_multilabel_military_segment.md` — 군 관련 seed 4종 멀티헤드 분류기 1차
+(seed vs pool은 AUC ~0.95, seed끼리는 0.52~0.59로 거의 구분 불가).
+`20260928_binary_vs_multilabel_military.md` — 같은 4종을 seed별 이진 분류기로 따로 학습해 비교
+(리스트 겹침 90~92%로 더 낮지만 seed끼리 AUC 0.48~0.53 — 차이는 학습 분산).
+`20260928_multilabel_military_topk_label_validity.md` — 멀티라벨 상위 1~6% 라벨별 리스트가 실제
+라벨 차이를 반영하는지 검증셋 lift로 확인(전역/부모는 상위 1~2%에서 x1.3~1.65, 곰신/입대는 서로 구분 안 됨).
 
 media 트랙 관련 진단 쿼리(舊 22~25, "6월 신규 유저" segment/media 커버리지·top30 미디어
 분석)는 2026-08-26 media 트랙 삭제와 함께 제거했다(필요하면 git 히스토리에서 복구 가능,

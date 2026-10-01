@@ -52,6 +52,34 @@ def build_labeled_frame(embeddings: pd.DataFrame, variant: Variant) -> pd.DataFr
     return df
 
 
+def build_multilabel_frame(embeddings: pd.DataFrame, variant) -> pd.DataFrame:
+    """MultiLabelVariant용 학습 프레임. 라벨 컬럼 label_<key>는 해당 seed 소속 여부(멀티핫) —
+    pool에 있으면서 seed에도 있는 유저는 seed 라벨을 따른다(pool은 "일반 모집단" 표본이라
+    seed 유저가 섞여 있을 수 있음). pool에만 있는 유저는 전부 0. candidate는 포함하지 않는다."""
+    seed_sets = {lb.key: load_ids(lb.seed_ids_csv) for lb in variant.labels}
+    pool_ids = load_ids(variant.pool_ids_csv)
+    all_ids = set(pool_ids).union(*seed_sets.values())
+
+    df = embeddings[embeddings[config.ID_COL].isin(all_ids)].copy()
+    for key, ids in seed_sets.items():
+        df[f"label_{key}"] = df[config.ID_COL].isin(ids).astype("float32")
+    return df
+
+
+class MultiLabelDataset(Dataset):
+    def __init__(self, df: pd.DataFrame, embed_cols, label_keys):
+        # pandas copy-on-write로 to_numpy() 결과가 읽기 전용일 수 있어 torch.from_numpy 경고가
+        # 난다 — 쓰기 가능한 배열로 보장해둔다.
+        self.x = np.require(df[embed_cols].to_numpy(dtype=np.float32), requirements="W")
+        self.y = np.require(df[[f"label_{k}" for k in label_keys]].to_numpy(dtype=np.float32), requirements="W")
+
+    def __len__(self) -> int:
+        return len(self.x)
+
+    def __getitem__(self, idx: int):
+        return torch.from_numpy(self.x[idx]), torch.from_numpy(self.y[idx])
+
+
 class EmbeddingLabelDataset(Dataset):
     def __init__(self, df: pd.DataFrame, embed_cols):
         self.ids = df[config.ID_COL].to_numpy()

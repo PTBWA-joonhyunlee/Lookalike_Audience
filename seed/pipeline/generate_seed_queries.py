@@ -66,6 +66,12 @@ SEGMENT_TEMPLATE_PATH = SEGMENT_QUERIES_DIR / "02_seed_segment_je.sql"
 
 BLOCK_COMMENT_END = "   ============================================================ */"
 
+# propfit.skp가 propfit.ptbwa_skp로 바뀌었다(2026-09-28 Athena TABLE_NOT_FOUND로 확인).
+# je 템플릿(02_seed_segment_je.sql)은 이미 실행된 쿼리의 provenance라 옛 이름 그대로 두고,
+# 생성 시점에 치환한다.
+LEGACY_SKP_TABLE = '"propfit"."skp"'
+SKP_TABLE = '"propfit"."ptbwa_skp"'
+
 # "수십 % 이상이면 같은 공간" 휴리스틱(eda/queries/id_space_check/14_seed_je_id_space_check.sql
 # 판정 기준 문서화 그대로)을 10%로 수치화했다 - je(60.2%)/피엘라벤 크로스워크(0.0% -> 61.0%) 둘 다
 # 이 임계값으로 명확히 갈린다. 애매하면(둘 다 임계값 미만, 또는 둘 다 이상) 자동 판정을
@@ -163,7 +169,7 @@ bidlog AS (
 ),
 skp_direct AS (
     SELECT DISTINCT ad_id AS device_ifa
-    FROM "propfit"."skp"
+    FROM {SKP_TABLE}
     WHERE NOT (year = '2024' AND month = '12' AND day = '31')   /* 깨진 .tmp 파티션 제외 */
       AND CAST(id_type AS VARCHAR) = '2'
       AND ad_id IS NOT NULL AND trim(CAST(ad_id AS VARCHAR)) <> ''
@@ -319,6 +325,7 @@ def _render_from_template(template_path: Path, seed_name: str, header: str) -> s
     text = template_path.read_text(encoding="utf-8")
     body = text.split(BLOCK_COMMENT_END, 1)[1].lstrip("\n")
     body = body.replace("seed_je_ad_id", f"seed_{seed_name}_ad_id")
+    body = body.replace(LEGACY_SKP_TABLE, SKP_TABLE)
     return header + "\n\n" + body
 
 
@@ -472,7 +479,7 @@ WITH segments_latest AS (
             PARTITION BY ad_id
             ORDER BY year DESC, month DESC, day DESC
         ) AS rn
-    FROM "propfit"."skp"
+    FROM {SKP_TABLE}
     WHERE NOT (year = '2024' AND month = '12' AND day = '31')   /* 깨진 .tmp 파티션만 제외 */
       AND CAST(id_type AS VARCHAR) = '2'
       AND ad_id IS NOT NULL AND trim(CAST(ad_id AS VARCHAR)) <> ''

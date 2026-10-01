@@ -20,3 +20,23 @@ class LookalikeClassifier(nn.Module):
 
     def forward(self, x):
         return self.net(x).squeeze(-1)
+
+
+class MultiHeadLookalikeClassifier(nn.Module):
+    """공유 trunk + 라벨별 로짓 헤드. forward()는 (batch, num_labels) 로짓을 반환한다
+    (라벨별 독립 sigmoid — 한 유저가 여러 라벨에 동시에 속할 수 있으므로 softmax가 아님)."""
+
+    def __init__(self, input_dim: int, hidden_dim: int, num_labels: int, dropout: float = 0.2):
+        super().__init__()
+        self.trunk = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+        self.heads = nn.Linear(hidden_dim, num_labels)
+
+    def forward(self, x):
+        return self.heads(self.trunk(x))

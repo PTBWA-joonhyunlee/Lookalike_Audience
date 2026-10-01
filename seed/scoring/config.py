@@ -85,3 +85,70 @@ VARIANTS = {
         candidate_ids_csv=CANDIDATE_IDS_CSV,
     ),
 }
+
+
+# ---------- 멀티라벨(멀티헤드) 분류기 ----------
+# 2026-09-28: 서로 겹치는 seed 여러 개(군 관련 4종 — 쌍별로 13~26% 겹침)를 seed별 이진
+# 분류기 4개 대신 공유 trunk + 라벨별 sigmoid 헤드 하나로 같이 학습한다. 라벨은 seed 소속
+# 멀티핫(여러 seed에 속하면 여러 개가 1), pool에만 있는 유저는 전부 0.
+
+# 헤드 여러 개가 trunk를 공유하므로 이진 분류기(HIDDEN_DIM=32)보다 약간 넓게 둔다.
+MULTILABEL_HIDDEN_DIM = 64
+
+@dataclass
+class Label:
+    key: str            # 파일/컬럼명용 영문 키(score_<key> 등)
+    description: str    # 사람이 읽는 라벨 설명(결과 메타데이터용 — 학습에는 안 씀)
+    seed_ids_csv: Path
+
+
+@dataclass
+class MultiLabelVariant:
+    name: str
+    labels: List[Label]
+    sources: List[Tuple[Path, List[str]]]
+    artifact_dir: Path
+    pool_ids_csv: Path
+    candidate_ids_csv: Path
+
+    @property
+    def label_keys(self) -> List[str]:
+        return [lb.key for lb in self.labels]
+
+    @property
+    def embed_cols(self) -> List[str]:
+        return [c for _, cols in self.sources for c in cols]
+
+    @property
+    def embed_dim(self) -> int:
+        return len(self.embed_cols)
+
+    @property
+    def model_path(self) -> Path:
+        return self.artifact_dir / "model.pt"
+
+    @property
+    def labels_path(self) -> Path:
+        return self.artifact_dir / "labels.json"
+
+
+_SEED_DATA_DIR = PROJECT_ROOT / "data" / "seed"
+
+MULTILABEL_VARIANTS = {
+    # 군 관련 seed 4종(2026-09-28 온보딩, id space 전부 direct). candidate는 4종 + 기존 seed
+    # 전부를 제외한 2026-06-01~09-25 bid log 모집단(segment/04_candidate_segment_parents.sql —
+    # 파일명은 parents지만 4종 공용).
+    "military": MultiLabelVariant(
+        name="military",
+        labels=[
+            Label("discharged_male", "전역한 남성", _SEED_DATA_DIR / "seed_segment_discharged_male.csv"),
+            Label("parents", "아들을 군대에 보낸 부모", _SEED_DATA_DIR / "seed_segment_parents.csv"),
+            Label("gomsin", "남자친구의 전역을 기다리는 여자친구", _SEED_DATA_DIR / "seed_segment_gomsin.csv"),
+            Label("enlistee", "입대예정 남성", _SEED_DATA_DIR / "seed_segment_enlistee.csv"),
+        ],
+        sources=[(SEGMENT_EMBEDDINGS_CSV, SEGMENT_EMBED_COLS)],
+        artifact_dir=PROJECT_ROOT / "data" / "models" / "lookalike_multilabel_military",
+        pool_ids_csv=POOL_IDS_CSV,
+        candidate_ids_csv=_SEED_DATA_DIR / "candidate_segment_20260928.csv",
+    ),
+}
