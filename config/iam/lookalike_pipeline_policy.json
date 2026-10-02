@@ -29,6 +29,8 @@
         "arn:aws:glue:ap-northeast-2:170217667865:catalog",
         "arn:aws:glue:ap-northeast-2:170217667865:database/prod-ptbwa-dw",
         "arn:aws:glue:ap-northeast-2:170217667865:table/prod-ptbwa-dw/*",
+        "arn:aws:glue:ap-northeast-2:170217667865:database/propfit",
+        "arn:aws:glue:ap-northeast-2:170217667865:table/propfit/*",
         "arn:aws:glue:ap-northeast-2:170217667865:database/dev-ptbwa-da",
         "arn:aws:glue:ap-northeast-2:170217667865:table/dev-ptbwa-da/*"
       ]
@@ -57,7 +59,11 @@
       ],
       "Resource": [
         "arn:aws:s3:::ptbwa-dw",
-        "arn:aws:s3:::ptbwa-dw/*"
+        "arn:aws:s3:::ptbwa-dw/*",
+        "arn:aws:s3:::ptbwa-skp",
+        "arn:aws:s3:::ptbwa-skp/*",
+        "arn:aws:s3:::ptbwa-skb",
+        "arn:aws:s3:::ptbwa-skb/*"
       ]
     },
     {
