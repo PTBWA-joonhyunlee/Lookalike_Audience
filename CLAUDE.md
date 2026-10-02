@@ -7,37 +7,39 @@
 ## 프로젝트 목표
 
 propfit 소스(`abi_bid_log_flatten` bid log + `propfit.skp` 세그먼트)에서, 외부 브랜드 seed
-리스트(현재: 피엘라벤)와 비슷한 신규 유저를 임베딩 기반으로 찾아내는 것 — [`seed/`](seed/README.md)
+리스트(현재: 피엘라벤)와 비슷한 신규 유저를 임베딩 기반으로 찾아내는 것 — [`lookalike/`](lookalike/README.md)
 트랙. skp 세그먼트 임베딩만 쓴다(피처는 segment 단독).
 
 이전에는 addi(`addi_bid_log_flatten`/`addi_postback_log`, cmp_no 캠페인 postback→mall IP
 매칭 전환) 소스로 시작한 별도 트랙이 있었다 — 2026-07-30에 이 트랙과 그 코드/쿼리/문서를
 전부 삭제했다(propfit 소스로 갈아탐, 필요하면 git 히스토리 참고). postback 로그 기반 트랙
-(placeholder였던 `postback/`)과 `seed/`의 media(방문 앱/사이트 시퀀스 임베딩) 하위 트랙도
-2026-08-26에 전부 삭제했다(필요하면 git 히스토리 참고).
+(placeholder였던 `postback/`)과 media(방문 앱/사이트 시퀀스 임베딩) 하위 트랙도
+2026-08-26에 전부 삭제했다. 2026-10-02에는 브랜드별 일회성 쿼리/문서(seed별 SQL, 멀티라벨, 콘솔 왕복용
+쿼리 생성기, `eda/queries/`, `summary_note/`)를 정리하고 `seed/`를 `lookalike/`로 바꿨다(전부 git 히스토리에 있음).
 
 ## 폴더 구조
 
 ```
-seed/       외부 seed 기반 신규 유저 룩어라이크(현재 트랙) — queries/embedding/train/inference/config/docs
-eda/        위 트랙의 피처/쿼리를 확정하기까지의 진단·EDA 쿼리 + 분석 결과 문서
+lookalike/  seed 기반 신규 유저 룩어라이크 — pipeline/(Athena 실행기)·queries/templates·embedding/train/inference/scoring
+config/     IAM 정책 JSON, 학습 설정 예시, AWS 키(LAL_accessKeys.csv — git 제외)
+eda/        진단·EDA 결과 문서(docs/) — ID 공간 크로스워크, 표본 버그 등 규칙의 근거
 data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 됨)
 ```
 
-`seed/`는 독립 작업 루트다 — 그 폴더로 `cd`한 뒤 파이썬을 실행한다(`.venv`는
+`lookalike/`는 독립 작업 루트다 — 그 폴더로 `cd`한 뒤 파이썬을 실행한다(`.venv`는
 저장소 루트에 하나, 상대 경로로 참조). 새 트랙 폴더를 만들 때도 이 구조(queries/lib +
 번호 매긴 파이프라인 SQL, embedding/train/inference, docs/README.md)를 따른다.
 
-## 데이터를 얻는 방법 (이 repo에는 Athena 접근 권한이 없음)
+## 데이터를 얻는 방법
 
-1. 필요한 데이터가 있으면 SQL을 해당 트랙 폴더(`seed/queries/`, `eda/queries/` 등)에 파일로
-   작성한다(파일 하나에 statement 하나 — Athena는 쿼리당 statement 하나만 허용, 진단용으로
-   여러 SELECT를 한 파일에 세미콜론으로 나눠 쓰지 않는다).
-2. 사용자가 그 SQL을 AWS Athena 콘솔에서 직접 실행하고 결과를 CSV로 받는다.
-3. 사용자가 그 CSV를 `data/`(해당 트랙의 하위 폴더, 예: `data/seed/`)에
-   올려주면, 그때 읽고 해석한다.
-4. Athena 에러 메시지나 CSV를 사용자가 붙여넣으면, 원인을 파악해 해당 SQL 파일을 직접
-   고친다 — 데이터를 직접 조회할 수 없으므로 항상 이 왕복으로 진행한다.
+**2026-10-02부터 Athena/S3를 boto3로 직접 호출할 수 있다**(`lookalike/pipeline/athena.py`, 자격증명은
+`config/LAL_accessKeys.csv` — git 제외, 값 출력 금지, IAM 정책은 `config/iam/`). 신규 seed 시나리오는
+`lookalike/pipeline/run_seed_scenario1.py`가 전부 자동으로 돌린다(경로 규칙: `lookalike/pipeline/paths.py`,
+로컬 `data/`와 `s3://ptbwa-dw/prod/lookalike/`가 같은 상대 경로). 테이블은 영구 생성하지 않는다 —
+seed 목록은 임시 외부 테이블(`dev-ptbwa-da._tmp_lookalike_*`, 끝나면 DROP), 결과는 UNLOAD로 S3에
+내보낸 뒤 다운로드. 비용이 큰 쿼리(후보 추출 등)를 임의로 실행하지 말고 사용자 요청이 있을 때만
+돌린다. 실행기가 못 하는 쿼리(진단/EDA 등)는 SQL을 `lookalike/queries/`에 파일로 작성해 사용자가
+Athena 콘솔에서 돌리게 하고(파일 하나에 statement 하나), 결과 CSV를 `data/`에 받아 해석한다.
 
 ## 규칙
 
@@ -54,7 +56,8 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
   없음) 또는 `mod(hash,N)=0` 형태(부호 무관)를 쓸 것.
 - **기간 필터**: 로그 테이블(`abi_bid_log_flatten` 등)은 항상 `year`/`month`/`day` 파티션으로
   필터링한다. 학습(pool/seed)과 스코어링 대상(후보) 기간은 서로 겹치지 않게 분리한다 —
-  현재 seed 트랙은 학습=2026-04~05, 후보=2026-06.
+  실행기가 `data/pools/<pool_id>/pool_spec.json`의 학습 기간과 후보 `--period`가 겹치면 거부한다
+  (기본 pool은 2026-04~05).
 - **컴플라이언스 필터 (오디언스 추출/임베딩 공통 필수)**: `req_ext_allow_user_data_collection = '1'`
   인 로그만 포함(NULL/미채움은 보수적으로 제외), `device_lmt = '1'`(옵트아웃) 디바이스는
   제외.
@@ -69,9 +72,8 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
   추론하지 않는다.
 - **식별자**: 유저 식별자는 `device_ifa`가 기본 키, `req_user_id`는 보조 키. 새 소스를
   붙일 때 이 둘 중 뭐가 진짜 안정적인 디바이스 키인지 확인할 것(위 ID 공간 규칙 참고).
-- **쿼리 정리**: 결론이 나서(매핑 확인, 방향 폐기 등) 더 재실행할 일이 없는 진단/EDA
-  쿼리는 `eda/queries/`에 두고, 실제로 반복 실행하는 파이프라인 쿼리만 각 트랙 폴더
-  (`seed/queries/`)에 남긴다.
+- **쿼리 정리**: 실행기가 쓰는 쿼리 템플릿(`lookalike/queries/templates/`)만 저장소에 둔다. 한 번 쓰고 끝난
+  진단/EDA 쿼리는 결론을 `eda/docs/`에 남기고 쿼리 파일은 두지 않는다(필요하면 git 히스토리).
 - **문서 정리**: 각 트랙의 `docs/README.md`는 "지금 어떻게 실행하고 뭐가 나오는지" 위주로
   간결하게 유지한다. 상세 조사 과정이나 지나간 의사결정 서술(왜 그렇게 설계했는지, 버그를
   어떻게 찾았는지)은 `eda/docs/`에 둔다.
@@ -82,7 +84,5 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
 ## 문서
 
 - [`README.md`](README.md) — 저장소 전체 구조 개요
-- [`seed/README.md`](seed/README.md) — seed 트랙 실행 방법 + 현재 산출물(`seed/docs/`는
-  2026-08-04 삭제됨 — segment/media 트랙 분리 이후 내용이 낡아서 정리, 필요하면
-  `summary_note/`의 최신 실험 요약 문서 참고)
+- [`lookalike/README.md`](lookalike/README.md) — 실행 방법(시나리오 1/2) + 폴더 구조
 - [`eda/docs/README.md`](eda/docs/README.md) — 진단/EDA 인덱스(무엇을 왜 조사했는지)

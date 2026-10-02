@@ -1,0 +1,86 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AthenaRunQueries",
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults",
+        "athena:StopQueryExecution",
+        "athena:GetWorkGroup"
+      ],
+      "Resource": "arn:aws:athena:ap-northeast-2:170217667865:workgroup/primary"
+    },
+    {
+      "Sid": "GlueReadCatalog",
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabase",
+        "glue:GetDatabases",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:GetPartition",
+        "glue:GetPartitions",
+        "glue:BatchGetPartition"
+      ],
+      "Resource": [
+        "arn:aws:glue:ap-northeast-2:170217667865:catalog",
+        "arn:aws:glue:ap-northeast-2:170217667865:database/prod-ptbwa-dw",
+        "arn:aws:glue:ap-northeast-2:170217667865:table/prod-ptbwa-dw/*",
+        "arn:aws:glue:ap-northeast-2:170217667865:database/dev-ptbwa-da",
+        "arn:aws:glue:ap-northeast-2:170217667865:table/dev-ptbwa-da/*"
+      ]
+    },
+    {
+      "Sid": "GlueTempSeedTablesOnly",
+      "Effect": "Allow",
+      "Action": [
+        "glue:CreateTable",
+        "glue:DeleteTable",
+        "glue:UpdateTable"
+      ],
+      "Resource": [
+        "arn:aws:glue:ap-northeast-2:170217667865:catalog",
+        "arn:aws:glue:ap-northeast-2:170217667865:database/dev-ptbwa-da",
+        "arn:aws:glue:ap-northeast-2:170217667865:table/dev-ptbwa-da/_tmp_lookalike_*"
+      ]
+    },
+    {
+      "Sid": "S3ReadBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::ptbwa-dw",
+        "arn:aws:s3:::ptbwa-dw/*"
+      ]
+    },
+    {
+      "Sid": "S3WriteLookalikePrefixOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": "arn:aws:s3:::ptbwa-dw/prod/lookalike/*"
+    },
+    {
+      "Sid": "S3ListMultipartUploads",
+      "Effect": "Allow",
+      "Action": "s3:ListBucketMultipartUploads",
+      "Resource": "arn:aws:s3:::ptbwa-dw",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "prod/lookalike/*"
+        }
+      }
+    }
+  ]
+}
