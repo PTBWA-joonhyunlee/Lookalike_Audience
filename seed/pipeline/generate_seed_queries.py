@@ -51,6 +51,11 @@ from scoring.config import PROJECT_ROOT
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+# 생성하는 모든 seed_* 테이블/뷰는 이 DB로 한정해서 쓴다 — 콘솔에서 선택된 DB가 달라도
+# (2026-09-30 dev-ptbwa-da 선택 상태에서 TABLE_NOT_FOUND 발생) 동작하게 한다. 이미 실행된
+# 옛 seed 쿼리(DB 접두사 없음)는 provenance라 그대로 둔다.
+SEED_DB = '"prod-ptbwa-dw"'
+
 SEED_QUERIES_DIR = PROJECT_ROOT / "seed" / "queries"
 SEGMENT_QUERIES_DIR = SEED_QUERIES_DIR / "segment"
 # 2026-08-26 eda/queries 재정리: id space 확인 쿼리는 eda/queries/id_space_check/ 밑에
@@ -127,6 +132,23 @@ LOCATION '{s3_path}'{tblproperties}
 """
 
 
+def render_create_seed_view_sql(seed_name: str, source_table: str, source_column: str,
+                                 id_space_check_filename: str = None) -> str:
+    next_step = f"eda/queries/id_space_check/{id_space_check_filename}" if id_space_check_filename else "eda/queries/id_space_check/의 id_space_check 쿼리"
+    return f"""/* ============================================================
+   01_create_seed_table_{seed_name}.sql (seed, {seed_name} 신규 seed 등록 —
+   pipeline/generate_seed_queries.py register --source-table로 자동 생성)
+   목적: S3 CSV가 아니라 이미 Glue/Athena에 있는 테이블 {source_table}({source_column} 컬럼)을
+   이후 쿼리가 기대하는 seed_{seed_name}(device_ifa string) 이름으로 노출하는 뷰를 만든다 —
+   데이터를 복사하지 않는다. 이 뷰를 만든 뒤 {next_step}를 실행해 ID 공간을 확인할 것.
+   ============================================================ */
+
+CREATE OR REPLACE VIEW {SEED_DB}.seed_{seed_name} AS
+SELECT CAST({source_column} AS VARCHAR) AS device_ifa
+FROM {source_table};
+"""
+
+
 def render_id_space_check_sql(seed_name: str, num: str, period_months=("04", "05")) -> str:
     months_sql = ", ".join(f"'{m}'" for m in period_months)
     return f"""/* ============================================================
@@ -155,7 +177,7 @@ def render_id_space_check_sql(seed_name: str, num: str, period_months=("04", "05
 
 WITH seed AS (
     SELECT DISTINCT device_ifa
-    FROM seed_{seed_name}
+    FROM {SEED_DB}.seed_{seed_name}
     WHERE device_ifa IS NOT NULL
       AND regexp_like(device_ifa, '^[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}$')
 ),
@@ -200,17 +222,18 @@ SELECT
 
 
 def cmd_register(seed_name: str, s3_path: str, csv_filename: str = None, has_header: bool = True,
-                  period_months=("04", "05")) -> None:
+                  period_months=("04", "05"), source_table: str = None, source_column: str = "device_ifa") -> None:
     num = _next_eda_number()
     id_space_filename = f"{num}_seed_{seed_name}_id_space_check.sql"
 
     seed_table_path = SEED_QUERIES_DIR / f"01_create_seed_table_{seed_name}.sql"
     id_space_path = EDA_QUERIES_DIR / id_space_filename
 
-    seed_table_path.write_text(
-        render_create_seed_table_sql(seed_name, s3_path, csv_filename, has_header, id_space_filename),
-        encoding="utf-8",
-    )
+    if source_table:
+        seed_sql = render_create_seed_view_sql(seed_name, source_table, source_column, id_space_filename)
+    else:
+        seed_sql = render_create_seed_table_sql(seed_name, s3_path, csv_filename, has_header, id_space_filename)
+    seed_table_path.write_text(seed_sql, encoding="utf-8")
     id_space_path.write_text(render_id_space_check_sql(seed_name, num, period_months), encoding="utf-8")
 
     print(f"[OK] {seed_table_path}")
@@ -269,11 +292,11 @@ def render_ad_id_table_direct(seed_name: str, decision: dict) -> str:
    seed_{seed_name}_ad_id 테이블을 device_ifa 키로 그대로 조인해서 쓴다.
    ============================================================ */
 
-CREATE TABLE seed_{seed_name}_ad_id
+CREATE TABLE {SEED_DB}.seed_{seed_name}_ad_id
 WITH (format = 'PARQUET')
 AS
 SELECT DISTINCT device_ifa
-FROM seed_{seed_name}
+FROM {SEED_DB}.seed_{seed_name}
 WHERE device_ifa IS NOT NULL
   AND regexp_like(device_ifa, '^[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}$');
 """
@@ -299,12 +322,12 @@ def render_ad_id_table_crosswalk(seed_name: str, decision: dict) -> str:
    seed_{seed_name}_ad_id 테이블(진짜 GAID 공간)을 device_ifa 키로 그대로 조인해서 쓴다.
    ============================================================ */
 
-CREATE TABLE seed_{seed_name}_ad_id
+CREATE TABLE {SEED_DB}.seed_{seed_name}_ad_id
 WITH (format = 'PARQUET')
 AS
 WITH seed AS (
     SELECT DISTINCT device_ifa
-    FROM seed_{seed_name}
+    FROM {SEED_DB}.seed_{seed_name}
     WHERE device_ifa IS NOT NULL
       AND regexp_like(device_ifa, '^[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}$')
 ),
@@ -324,7 +347,7 @@ JOIN skb k ON sd.device_ifa = k.{col};
 def _render_from_template(template_path: Path, seed_name: str, header: str) -> str:
     text = template_path.read_text(encoding="utf-8")
     body = text.split(BLOCK_COMMENT_END, 1)[1].lstrip("\n")
-    body = body.replace("seed_je_ad_id", f"seed_{seed_name}_ad_id")
+    body = body.replace("seed_je_ad_id", f"{SEED_DB}.seed_{seed_name}_ad_id")
     body = body.replace(LEGACY_SKP_TABLE, SKP_TABLE)
     return header + "\n\n" + body
 
@@ -371,7 +394,7 @@ def cmd_resolve(seed_name: str, matches: list) -> None:
 
 # ---------- 3) candidate ----------
 
-_SEED_AD_ID_TABLE_RE = re.compile(r"CREATE TABLE\s+(seed_\w+_ad_id)", re.IGNORECASE)
+_SEED_AD_ID_TABLE_RE = re.compile(r"CREATE TABLE\s+(?:\"[^\"]+\"\.)?(seed_\w+_ad_id)", re.IGNORECASE)
 
 
 def _discover_seed_exclusions() -> list:
@@ -418,7 +441,16 @@ def _render_period_predicate(period_start: str, period_end: str) -> str:
     return f"b.year = '{sy}'\n      AND {month_clause}"
 
 
-def render_candidate_segment_query(seed_name: str, period_start: str, period_end: str) -> str:
+def _render_multi_period_predicate(periods: list) -> str:
+    """periods: [(start, end), ...] 여러 기간을 OR로 묶는다. 각 기간은
+    _render_period_predicate의 제약(같은 연도, 시작은 월 1일)을 그대로 따른다."""
+    if len(periods) == 1:
+        return _render_period_predicate(*periods[0])
+    parts = [f"(\n      {_render_period_predicate(a, b)}\n      )" for a, b in periods]
+    return "(" + "\n      OR ".join(parts) + ")"
+
+
+def render_candidate_segment_query(seed_name: str, period_start: str, period_end: str, periods: list = None) -> str:
     """candidate 정의(bid log 기간 + region=KR/OS=Android + skp 세그먼트 보유 + 기존 seed
     전부 제외) + 세그먼트 피처 추출을 CREATE TABLE 없이 SELECT 하나로 합친다 —
     03_create_candidate_table.sql(CTAS로 candidates_* 테이블 생성) + 04_candidate_segment.sql
@@ -439,12 +471,14 @@ def render_candidate_segment_query(seed_name: str, period_start: str, period_end
             f"실행했는지 확인할 것"
         )
 
-    period_where = _render_period_predicate(period_start, period_end)
+    periods = periods or [(period_start, period_end)]
+    period_where = _render_multi_period_predicate(periods)
+    period_label = ", ".join(f"{a} ~ {b}" for a, b in periods)
 
     join_lines, null_lines = [], []
     for tbl in exclusions:
         alias = f"s_{tbl[len('seed_'):-len('_ad_id')]}"
-        join_lines.append(f"    LEFT JOIN {tbl} {alias} ON b.device_ifa = {alias}.device_ifa")
+        join_lines.append(f"    LEFT JOIN {SEED_DB}.{tbl} {alias} ON b.device_ifa = {alias}.device_ifa")
         null_lines.append(f"      AND {alias}.device_ifa IS NULL")
     joins_sql = "\n".join(join_lines)
     nulls_sql = "\n".join(null_lines)
@@ -456,7 +490,7 @@ def render_candidate_segment_query(seed_name: str, period_start: str, period_end
 
    PARAMETERS
      SEED_NAME       = {seed_name}
-     PERIOD          = {period_start} ~ {period_end} (같은 연도 내에서만 지원, 시작일은
+     PERIOD          = {period_label} (각 기간은 같은 연도 내에서만 지원, 시작일은
                         항상 시작월 1일부터로 가정 — 다르면 수동으로 고칠 것)
      EXCLUDED_SEEDS  = {excluded_note}
                         (seed/queries/02_create_seed_ad_id_table*.sql 전체를 스캔해 자동
@@ -515,8 +549,8 @@ seg1 AS (
     return header + "\n" + candidates_block + matched_onward + "\n"
 
 
-def cmd_candidate(seed_name: str, period_start: str, period_end: str) -> None:
-    text = render_candidate_segment_query(seed_name, period_start, period_end)
+def cmd_candidate(seed_name: str, period_start: str, period_end: str, periods: list = None) -> None:
+    text = render_candidate_segment_query(seed_name, period_start, period_end, periods)
     path = SEGMENT_QUERIES_DIR / f"04_candidate_segment_{seed_name}.sql"
     path.write_text(text, encoding="utf-8")
     print(f"[OK] {path}")
@@ -531,7 +565,9 @@ def main():
 
     p_register = sub.add_parser("register", help="seed 테이블 등록 + id space 확인 쿼리 생성")
     p_register.add_argument("--seed-name", required=True)
-    p_register.add_argument("--s3-path", required=True, help="예: s3://ptbwa-dw/prod/seed_yeti/")
+    p_register.add_argument("--s3-path", help="예: s3://ptbwa-dw/prod/seed_yeti/ (--source-table 없을 때 필수)")
+    p_register.add_argument("--source-table", help="이미 Athena에 있는 seed 테이블(예: '\"dev-ptbwa-da\".\"db_m_adid\"') — 주면 S3 CSV 대신 뷰를 만든다")
+    p_register.add_argument("--source-column", default="device_ifa", help="--source-table의 광고 ID 컬럼명")
     p_register.add_argument("--csv-filename", help="data/seed/ 밑 원본 CSV 파일명(주석용, 선택)")
     p_register.add_argument("--header", action="store_true", help="원본 CSV에 헤더 행이 있으면 켤 것")
     p_register.add_argument("--period-months", nargs=2, default=("04", "05"),
@@ -545,18 +581,29 @@ def main():
 
     p_candidate = sub.add_parser("candidate", help="candidate 정의+segment 피처 추출 쿼리 생성(CREATE TABLE 없음)")
     p_candidate.add_argument("--seed-name", required=True)
-    p_candidate.add_argument("--period-start", required=True, metavar="YYYY-MM-01",
+    p_candidate.add_argument("--period-start", metavar="YYYY-MM-01",
                               help="candidate 기간 시작 — 반드시 그 달의 1일")
-    p_candidate.add_argument("--period-end", required=True, metavar="YYYY-MM-DD",
+    p_candidate.add_argument("--period-end", metavar="YYYY-MM-DD",
                               help="candidate 기간 끝(같은 연도) — 그 날짜까지 포함")
+    p_candidate.add_argument("--period", action="append", metavar="YYYY-MM-01:YYYY-MM-DD",
+                              help="여러 기간을 줄 때 반복 지정(예: --period 2026-01-01:2026-03-31 --period 2026-06-01:2026-09-30)")
 
     args = parser.parse_args()
     if args.command == "register":
-        cmd_register(args.seed_name, args.s3_path, args.csv_filename, args.header, tuple(args.period_months))
+        if not args.source_table and not args.s3_path:
+            parser.error("register: --s3-path 또는 --source-table 중 하나는 필요")
+        cmd_register(args.seed_name, args.s3_path, args.csv_filename, args.header, tuple(args.period_months),
+                     args.source_table, args.source_column)
     elif args.command == "resolve":
         cmd_resolve(args.seed_name, args.matches)
     elif args.command == "candidate":
-        cmd_candidate(args.seed_name, args.period_start, args.period_end)
+        if args.period:
+            periods = [tuple(x.split(":")) for x in args.period]
+            cmd_candidate(args.seed_name, periods[0][0], periods[-1][1], periods)
+        elif args.period_start and args.period_end:
+            cmd_candidate(args.seed_name, args.period_start, args.period_end)
+        else:
+            parser.error("candidate: --period(반복) 또는 --period-start/--period-end 필요")
 
 
 if __name__ == "__main__":
