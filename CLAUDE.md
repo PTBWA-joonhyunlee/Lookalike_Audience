@@ -44,6 +44,20 @@ Athena 콘솔에서 돌리게 하고(파일 하나에 statement 하나), 결과 
 
 ## 규칙
 
+- **실행기를 중복으로 띄우지 않는다(2026-10-06 실제 발생)**: 같은 `--run-id`/산출물 경로를 쓰는
+  실행기를 동시에 두 개 돌리면 Athena 쿼리가 두 번 나가 스캔 비용이 2배가 되고(후보 1.4TB × 2),
+  UNLOAD 결과가 같은 S3 prefix에 섞여 로컬 CSV에 모든 행이 두 번 들어가며, 임베딩 CSV에 동시에
+  append하다 `PermissionError`로 한쪽이 죽는다. 실행기를 띄우기 전과 "안 뜬 것 같다"고 판단하기 전에
+  지킬 것:
+  - 실행 전에 이미 도는 프로세스가 없는지 확인한다(`tasklist | grep -i python`,
+    `Get-CimInstance Win32_Process`의 CommandLine에 `pipeline.run_` 포함 여부).
+  - 백그라운드 실행은 도구의 `run_in_background` 하나만 쓴다. 쉘 안에서 `nohup ... &`를 쓰지 않는다
+    (쉘이 끝나도 프로세스가 살아 있을 수 있어 "안 떴다"고 오판하고 다시 띄우게 된다).
+  - 로그가 비어 있어도 안 뜬 것이 아니다 — 파이썬은 `-u`로 실행하고, 재실행 전에 프로세스 목록과
+    `lineage.json`의 최신 stage, S3 `_athena_results`/산출물 prefix의 쿼리 ID가 몇 개인지 먼저 본다.
+  - 이미 실행 중인 작업이 있으면 새로 띄우지 말고 기다리거나(알림을 받는다) 진행 상황만 읽는다.
+    다시 실행해야 하면 먼저 기존 프로세스를 종료하고 같은 run-id의 부분 산출물이 남았는지 확인한다.
+  - 같은 후보 기간/pool/seed 캐시를 쓰는 서로 다른 run-id도 동시에 돌리지 않는다(캐시 파일이 같다).
 - **Athena/Glue 타입 주의**: CSV 기반 외부 테이블인데도 Glue 크롤러가 숫자처럼 보이는 컬럼을
   `bigint`/`double`로 추론해둔 경우가 많다. 문자열 함수(`trim`, `regexp_like`, `LIKE`, `||`)를
   쓰기 전엔 항상 `CAST(col AS VARCHAR)`로 감싼다.

@@ -50,6 +50,16 @@
       ]
     },
     {
+      "Sid": "GlueCreateDeliveryTables",
+      "Effect": "Allow",
+      "Action": "glue:CreateTable",
+      "Resource": [
+        "arn:aws:glue:ap-northeast-2:170217667865:catalog",
+        "arn:aws:glue:ap-northeast-2:170217667865:database/dev-ptbwa-da",
+        "arn:aws:glue:ap-northeast-2:170217667865:table/dev-ptbwa-da/*"
+      ]
+    },
+    {
       "Sid": "S3ReadBucket",
       "Effect": "Allow",
       "Action": [
@@ -63,7 +73,9 @@
         "arn:aws:s3:::ptbwa-skp",
         "arn:aws:s3:::ptbwa-skp/*",
         "arn:aws:s3:::ptbwa-skb",
-        "arn:aws:s3:::ptbwa-skb/*"
+        "arn:aws:s3:::ptbwa-skb/*",
+        "arn:aws:s3:::ptbwa-propfit",
+        "arn:aws:s3:::ptbwa-propfit/*"
       ]
     },
     {

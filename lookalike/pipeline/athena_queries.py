@@ -12,7 +12,9 @@
 import re
 from typing import List, Tuple
 
-from .paths import PROJECT_ROOT, SCRATCH_DB
+from .paths import PROJECT_ROOT, SCRATCH_DB, TEMP_TABLE_PREFIX
+
+TEMP_PREFIX_GUARD = "_tmp_"
 
 SEGMENT_TEMPLATE_PATH = PROJECT_ROOT / "lookalike" / "queries" / "templates" / "segment_features.sql"
 BLOCK_COMMENT_END = "   ============================================================ */"
@@ -127,16 +129,35 @@ def render_drop_temp_table(table: str) -> str:
 
 # ---------- id space check ----------
 
-def render_id_space_check(temp_table: str, period_months=("04", "05")) -> str:
+def seed_source_sql(temp_table: str = None, source_ref: str = None, col: str = "device_ifa",
+                    uuid_only: bool = True) -> str:
+    """seed ID 목록을 device_ifa 한 열(VARCHAR, 중복 제거)로 돌려주는 SELECT. temp_table(임시 외부 테이블)
+    또는 source_ref(기존 Athena 테이블, 예: '"dev-ptbwa-da"."sepo_17177"')의 col 열을 읽는다.
+    uuid_only=False면 UUID 형식 필터를 걸지 않는다(세톱박스 ID 등 UUID가 아닌 ID 공간 — 매칭은 조인이 결정)."""
+    if bool(temp_table) == bool(source_ref):
+        raise ValueError("temp_table 또는 source_ref 중 하나만 지정하세요")
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", col):
+        raise ValueError(f"col 형식이 올바르지 않습니다: {col!r}")
+    ref = source_ref if source_ref else fq(temp_table)
+    if uuid_only:
+        id_filter = f"AND regexp_like(CAST({col} AS VARCHAR), '{UUID_RE}')"
+    else:
+        id_filter = f"AND trim(CAST({col} AS VARCHAR)) <> ''"
+    return (f"SELECT DISTINCT CAST({col} AS VARCHAR) AS device_ifa\n"
+            f"    FROM {ref}\n"
+            f"    WHERE {col} IS NOT NULL\n"
+            f"      {id_filter}")
+
+
+def render_id_space_check(temp_table: str = None, period_months=("04", "05"), source_ref: str = None,
+                          col: str = "device_ifa", uuid_only: bool = True) -> str:
     """seed의 device_ifa가 어떤 ID 공간(raw GAID 직접 / ptbwa_skb 크로스워크)에 있는지 6개 숫자로 센다.
     매칭 건수만으로 "같은 공간"이라 추론하지 않고 직접/크로스워크 후보를 모두 카운트한다
     (eda/docs/id_space_crosswalk.md). bidlog 매칭은 학습 기간(기본 2026년 04~05월)으로 본다."""
     months_sql = ", ".join(f"'{m}'" for m in period_months)
+    seed_sql = seed_source_sql(temp_table, source_ref, col, uuid_only)
     return f"""WITH seed AS (
-    SELECT DISTINCT device_ifa
-    FROM {fq(temp_table)}
-    WHERE device_ifa IS NOT NULL
-      AND regexp_like(device_ifa, '{UUID_RE}')
+    {seed_sql}
 ),
 bidlog AS (
     SELECT DISTINCT device_ifa
@@ -164,6 +185,9 @@ skb_uuid AS (
 )
 SELECT
     (SELECT count(*) FROM seed) AS seed_total,
+    (SELECT count(*) FROM seed WHERE regexp_like(device_ifa, '{UUID_RE}')) AS seed_uuid_format,
+    (SELECT min(length(device_ifa)) FROM seed) AS seed_min_len,
+    (SELECT max(length(device_ifa)) FROM seed) AS seed_max_len,
     (SELECT count(*) FROM seed sd JOIN bidlog b ON sd.device_ifa = b.device_ifa) AS seed_matches_bidlog,
     (SELECT count(*) FROM seed sd JOIN skp_direct s ON sd.device_ifa = s.device_ifa) AS seed_matches_skp_direct,
     (SELECT count(*) FROM seed sd JOIN skb_ad_id k ON sd.device_ifa = k.v) AS seed_matches_skb_ad_id,
@@ -173,25 +197,18 @@ SELECT
 
 # ---------- seed segment ----------
 
-def render_seed_ad_id_cte(temp_table: str, mode: str, crosswalk_col: str = None) -> str:
+def render_seed_ad_id_cte(temp_table: str = None, mode: str = "direct", crosswalk_col: str = None,
+                          source_ref: str = None, col: str = "device_ifa", uuid_only: bool = True) -> str:
+    seed_sql = seed_source_sql(temp_table, source_ref, col, uuid_only)
     if mode == "direct":
-        return (
-            "seed_ad_id AS (\n"
-            "    SELECT DISTINCT device_ifa\n"
-            f"    FROM {fq(temp_table)}\n"
-            "    WHERE device_ifa IS NOT NULL\n"
-            f"      AND regexp_like(device_ifa, '{UUID_RE}')\n"
-            ")"
-        )
+        return f"seed_ad_id AS (\n    {seed_sql}\n)"
     if mode == "crosswalk":
         if crosswalk_col not in ("platform_ad_id", "uuid"):
             raise ValueError(f"crosswalk_col 값이 올바르지 않습니다: {crosswalk_col!r}")
         return (
             "seed_ad_id AS (\n"
             "    SELECT DISTINCT k.ad_id AS device_ifa\n"
-            f"    FROM (SELECT DISTINCT device_ifa FROM {fq(temp_table)}\n"
-            "          WHERE device_ifa IS NOT NULL\n"
-            f"            AND regexp_like(device_ifa, '{UUID_RE}')) sd\n"
+            f"    FROM ({seed_sql}) sd\n"
             "    JOIN (SELECT DISTINCT\n"
             f"              CAST({crosswalk_col} AS VARCHAR) AS {crosswalk_col},\n"
             "              CAST(ad_id AS VARCHAR) AS ad_id\n"
@@ -208,7 +225,8 @@ def _template_body() -> str:
     return text.split(BLOCK_COMMENT_END, 1)[1].lstrip("\n")
 
 
-def render_seed_segment_query(temp_table: str, mode: str, crosswalk_col: str = None) -> str:
+def render_seed_segment_query(temp_table: str = None, mode: str = "direct", crosswalk_col: str = None,
+                              source_ref: str = None, col: str = "device_ifa", uuid_only: bool = True) -> str:
     body = _template_body()
     n_join = body.count("JOIN seed_ad_id sd")
     n_with = body.count("WITH segments_latest AS (")
@@ -216,7 +234,7 @@ def render_seed_segment_query(temp_table: str, mode: str, crosswalk_col: str = N
         raise RuntimeError(
             f"segment_features.sql 템플릿 구조가 바뀌었습니다(JOIN {n_join}개, WITH {n_with}개) - 렌더러를 확인하세요"
         )
-    cte = render_seed_ad_id_cte(temp_table, mode, crosswalk_col)
+    cte = render_seed_ad_id_cte(temp_table, mode, crosswalk_col, source_ref, col, uuid_only)
     body = body.replace("WITH segments_latest AS (", f"WITH {cte},\nsegments_latest AS (", 1)
     return strip_line_comments(body).strip().rstrip(";")
 
@@ -317,3 +335,25 @@ def render_skp_snapshot() -> str:
     $partitions 메타데이터 조회라 스캔 비용이 없다(lineage 기록용)."""
     return ("SELECT max(concat(year, '-', month, '-', day)) AS latest_partition, count(*) AS n_partitions "
             'FROM "propfit"."ptbwa_skp$partitions"')
+
+
+# ---------- 결과 전달용 영구 테이블 ----------
+
+_TABLE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
+
+
+def check_table_name(name: str) -> str:
+    if not _TABLE_NAME_RE.match(name) or name.startswith(TEMP_PREFIX_GUARD):
+        raise ValueError(f"테이블명 형식이 올바르지 않습니다(영문으로 시작, 영문/숫자/_ , '_tmp_' 접두사 금지): {name!r}")
+    return name
+
+
+def render_delivery_table_ddl(table: str, s3_location: str, columns: List[Tuple[str, str]]) -> str:
+    """결과 CSV(헤더 1줄) 위의 외부 테이블 DDL. 데이터는 S3에 그대로 두고 메타데이터만 만든다.
+    columns: [(이름, Hive 타입)] — CSV 열 순서와 같아야 한다."""
+    check_table_name(table)
+    cols = ",\n".join(f"  `{n}` {t}" for n, t in columns)
+    return (f"CREATE EXTERNAL TABLE `{SCRATCH_DB}`.`{table}` (\n{cols}\n)\n"
+            "ROW FORMAT DELIMITED FIELDS TERMINATED BY ','\n"
+            f"LOCATION '{s3_location}'\n"
+            "TBLPROPERTIES ('skip.header.line.count' = '1')")
