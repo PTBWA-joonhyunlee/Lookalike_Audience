@@ -173,8 +173,9 @@ def top_masks(scores: np.ndarray, pct: float) -> np.ndarray:
 
 
 def find_pct_for_union(scores: np.ndarray, target_union: int, lo: float = 0.01, hi: float = 100.0,
-                       tol: float = 0.001) -> float:
-    """모든 seed에 같은 상위 pct%를 줬을 때 합집합 크기가 target_union에 가장 가까워지는 pct(이분 탐색, 합집합은 pct에 단조 증가)."""
+                       tol: float = 0.001, at_least: bool = False) -> float:
+    """모든 seed에 같은 상위 pct%를 줬을 때 합집합 크기가 target_union에 가장 가까워지는 pct(이분 탐색, 합집합은 pct에 단조 증가).
+    at_least=True면 합집합이 target_union 이상이 되는 가장 작은 pct(tol 격자)."""
     def union_size(p):
         return int(top_masks(scores, p).any(axis=1).sum())
 
@@ -184,5 +185,7 @@ def find_pct_for_union(scores: np.ndarray, target_union: int, lo: float = 0.01, 
             lo = mid
         else:
             hi = mid
+    if at_least:    # hi는 항상 합집합 >= target인 쪽(상한 100%도 target보다 작으면 100%)
+        return hi
     a, b = lo, hi
     return a if abs(union_size(a) - target_union) <= abs(union_size(b) - target_union) else b

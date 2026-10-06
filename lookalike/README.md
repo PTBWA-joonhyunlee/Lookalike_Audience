@@ -43,6 +43,7 @@ cd lookalike
 | `--seed 라벨=DB.테이블:컬럼` | Athena seed 테이블(반복 가능). UUID 형식 필터는 걸지 않고 매칭은 id_space_check가 판정 |
 | `--id-mode` | 자동 판정이 애매할 때 지정: `direct` / `crosswalk:uuid` / `crosswalk:platform_ad_id` |
 | `--target-union N` | 모든 seed에 같은 상위 pct를 주되 합집합이 N에 가장 가까운 pct를 이분 탐색(없으면 `--top-pct`) |
+| `--at-least` | `--target-union`과 함께: 가장 가까운 값 대신 합집합이 N **이상**이 되는 최소 pct를 고른다 |
 | `--report-pcts` | 이 pct들마다 seed 쌍별 교집합 표 생성(교집합 / seed 인원, 기본 2,4,6,8,10) |
 | `--output-table T` | 끝에서 `union_top.csv`를 `s3://.../delivery/<group>/<run_id>/T/`에 올리고 `dev-ptbwa-da.T` 외부 테이블 생성 |
 

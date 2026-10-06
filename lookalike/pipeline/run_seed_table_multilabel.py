@@ -246,8 +246,8 @@ class MultiRun(Run):
             df.to_csv(all_path, index=False)
 
             if a.target_union:
-                pct = find_pct_for_union(scores, a.target_union)
-                how = f"합집합 {a.target_union:,}에 가장 가까운 공통 상위 pct 이분 탐색"
+                pct = find_pct_for_union(scores, a.target_union, at_least=a.at_least)
+                how = f"합집합 {a.target_union:,}{' 이상이 되는 최소' if a.at_least else '에 가장 가까운'} 공통 상위 pct 이분 탐색"
             else:
                 pct, how = a.top_pct, "--top-pct 고정"
             masks = top_masks(scores, pct)
@@ -352,6 +352,7 @@ def main():
     ap.add_argument("--id-mode", help="id_space 자동 판정 덮어쓰기: direct | crosswalk:uuid | crosswalk:platform_ad_id")
     s = ap.add_argument_group("선택")
     s.add_argument("--target-union", type=int, help="합집합 목표 인원(공통 상위 pct를 이분 탐색)")
+    s.add_argument("--at-least", action="store_true", help="--target-union 이상이 되는 최소 pct를 고른다(기본: 가장 가까운 값)")
     s.add_argument("--top-pct", type=float, default=10.0, help="--target-union이 없을 때 seed별 상위 pct")
     s.add_argument("--report-pcts", default="2,4,6,8,10", help="seed 간 교집합을 보고할 상위 pct 목록(쉼표)")
     c = ap.add_argument_group("분류기 학습")
