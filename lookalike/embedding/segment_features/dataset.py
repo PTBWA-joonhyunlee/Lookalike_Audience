@@ -17,7 +17,8 @@ class SegmentFeaturesDataset(Dataset):
         self.ids = data["device_ifa"]
         self.gender_score = data["gender_score"].astype(np.float32)
         self.age_bracket_idx = data["age_bracket_idx"].astype(np.int64)
-        self.group_idx = {g: data[f"{g}_idx"].astype(np.int64) for g in POOLED_GROUPS}
+        # 인덱스 배열은 저장 dtype(int32 가능) 그대로 두고 __getitem__에서 long으로 변환한다(전체를 int64로 복사하지 않아 메모리 절반)
+        self.group_idx = {g: data[f"{g}_idx"] for g in POOLED_GROUPS}
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -28,5 +29,5 @@ class SegmentFeaturesDataset(Dataset):
             "age_bracket_idx": torch.tensor(self.age_bracket_idx[idx], dtype=torch.long),
         }
         for g in POOLED_GROUPS:
-            batch[f"{g}_idx"] = torch.tensor(self.group_idx[g][idx], dtype=torch.long)
+            batch[f"{g}_idx"] = torch.tensor(self.group_idx[g][idx].astype(np.int64), dtype=torch.long)
         return str(self.ids[idx]), batch

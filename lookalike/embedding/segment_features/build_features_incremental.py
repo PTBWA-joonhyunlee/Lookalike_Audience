@@ -10,36 +10,43 @@
 #     --csv candidate_segment.csv --tag candidate_0818
 
 import argparse
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from . import config
-from .bert_lookup import SegmentEmbeddingLookup
+from . import artifacts
 from .build_features import build
-from ..common.vocab import CategoryVocab
 
 
-def build_npz(csv_path, tag: str, skip_ids: set = None):
-    """csv_path를 기존 vocab/lookup으로 인코딩해 segment_features_<tag>.npz로 저장한다.
-    skip_ids를 주면 그 device_ifa는 인코딩 전에 걸러낸다(예: 이미 임베딩된 candidate를
-    다시 인코딩하는 비용을 피할 때 — pipeline/run_new_seed_pipeline.py 참고). 걸러낸 뒤
-    남는 행이 없으면 None을 반환한다."""
+def build_npz_from_df(df: pd.DataFrame, tag: str, ae_dir=None, out_dir=None):
+    """DataFrame(segment CSV 행)을 ae_dir(기본: legacy)의 vocab/lookup으로 인코딩해
+    <out_dir>/segment_features_<tag>.npz로 저장한다(out_dir 기본: ae_dir). 빈 df면 None."""
+    if df.empty:
+        return None
+    ae_dir = Path(ae_dir) if ae_dir else config.ARTIFACT_DIR
+    out_dir = Path(out_dir) if out_dir else ae_dir
+    lookup = artifacts.load_bert_lookup(ae_dir)
+    age_vocab = artifacts.load_age_vocab(ae_dir)
+    features, _ = build(df, lookup, age_vocab=age_vocab)
+
+    out_npz = out_dir / f"segment_features_{tag}.npz"
+    out_npz.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(out_npz, **features)
+    return out_npz
+
+
+def build_npz(csv_path, tag: str, skip_ids: set = None, ae_dir=None, out_dir=None):
+    """csv_path 전체를 한 번에 인코딩한다(작은 파일용 — 큰 파일은 pipeline/encode.py가 청크로 처리).
+    skip_ids를 주면 그 device_ifa는 걸러내고, 남는 행이 없으면 None."""
     df = pd.read_csv(csv_path, dtype=str)
     if skip_ids:
         df = df[~df[config.ID_COL].isin(skip_ids)].reset_index(drop=True)
-    if df.empty:
-        return None
-
-    lookup = SegmentEmbeddingLookup.load(config.BERT_LOOKUP_PATH)
-    age_vocab = CategoryVocab.load(config.AGE_VOCAB_PATH)
-    features, _ = build(df, lookup, age_vocab=age_vocab)
-
-    out_npz = config.ARTIFACT_DIR / f"segment_features_{tag}.npz"
-    out_npz.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(out_npz, **features)
-    print(f"{len(df)} devices -> {out_npz}")
-    return out_npz
+    out = build_npz_from_df(df, tag, ae_dir, out_dir)
+    if out is not None:
+        print(f"{len(df)} devices -> {out}")
+    return out
 
 
 def main():

@@ -11,6 +11,7 @@
 #   seeds/<seed>/<run_id>/            id_space_check.json, seed_segment.csv, model/, scores/
 
 import re
+from datetime import date
 from pathlib import Path
 from typing import List, Tuple
 
@@ -94,3 +95,33 @@ def temp_table_name(seed: str, run_id: str) -> str:
     """seed 목록 위에 만드는 임시 외부 테이블 이름(DROP 대상)."""
     name = f"{TEMP_TABLE_PREFIX}{_check_name('seed', seed)}_{_check_name('run_id', run_id)}"
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
+# ---------- 오토인코더 버전 ----------
+
+AE_VERSION_LEGACY = "legacy"
+LEGACY_AE_DIR = LOCAL_ROOT / "models" / "segment_features"   # 시나리오 2 이전에 학습한 모델
+
+
+def ae_dir(ae_version: str) -> Path:
+    """ae_version의 산출물 디렉터리(model.pt/vocab/lookup/config.json — embedding/segment_features/artifacts.py)."""
+    if ae_version == AE_VERSION_LEGACY:
+        return LEGACY_AE_DIR
+    return Layout.local(Layout.rel_autoencoder(ae_version))
+
+
+# ---------- 기간 ----------
+
+def parse_periods(raw: List[str]) -> List[Tuple[str, str]]:
+    """['2026-06-01:2026-06-30', ...] -> [('2026-06-01','2026-06-30'), ...]"""
+    periods = []
+    for item in raw:
+        start, sep, end = item.partition(":")
+        if not sep:
+            raise ValueError(f"--period는 YYYY-MM-01:YYYY-MM-DD 형식입니다: {item!r}")
+        periods.append((date.fromisoformat(start).isoformat(), date.fromisoformat(end).isoformat()))
+    return periods
+
+
+def periods_overlap(a: List[Tuple[str, str]], b: List[Tuple[str, str]]) -> bool:
+    return any(s1 <= e2 and s2 <= e1 for s1, e1 in a for s2, e2 in b)

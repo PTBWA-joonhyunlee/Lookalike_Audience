@@ -21,31 +21,14 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from embedding.common.device import resolve_device
-from embedding.common.vocab import CategoryVocab
-from embedding.segment_features import config
-from embedding.segment_features.bert_lookup import SegmentEmbeddingLookup
+from embedding.segment_features import artifacts, config
 from embedding.segment_features.dataset import SegmentFeaturesDataset
 from embedding.segment_features.model import SegmentFeaturesAutoencoder
 
 
 def load_model(model_dir: str, device: torch.device) -> SegmentFeaturesAutoencoder:
-    age_vocab = CategoryVocab.load(config.AGE_VOCAB_PATH)
-    bert_lookup = SegmentEmbeddingLookup.load(config.BERT_LOOKUP_PATH)
-    bert_lookup_vectors = torch.tensor(bert_lookup.vectors, dtype=torch.float32)
-
-    model = SegmentFeaturesAutoencoder(
-        age_vocab_size=len(age_vocab),
-        bert_lookup_vectors=bert_lookup_vectors,
-        age_embed_dim=config.AGE_EMBED_DIM,
-        proj_dims=config.PROJ_DIMS,
-        hidden_dim=config.HIDDEN_DIM,
-        z_dim=config.EMBED_DIM,
-        freeze_bert_lookup=config.FREEZE_BERT_LOOKUP,
-    ).to(device)
-    state_path = os.path.join(model_dir, "model.pt")
-    model.load_state_dict(torch.load(state_path, map_location=device))
-    model.eval()
-    return model
+    """model_dir(= ae_dir)의 model.pt/vocab/lookup/config.json으로 학습된 모델을 불러온다."""
+    return artifacts.load_trained_model(model_dir, device)
 
 
 def run(input_path=None, model_dir=None, output_path=None, batch_size=4096, device="auto"):

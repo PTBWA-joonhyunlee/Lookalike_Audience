@@ -86,6 +86,15 @@ class Aws:
             time.sleep(delay)
             delay = min(delay * 1.5, 15.0)
 
+    def skp_snapshot(self) -> dict:
+        """추출 시점 skp 최신 파티션(= 세그먼트 스냅샷). lineage 기록용이라 실패해도 실행을 막지 않는다."""
+        from .athena_queries import render_skp_snapshot
+        try:
+            qid, _ = self.run_query(render_skp_snapshot(), label="skp-snapshot")
+            return self.query_rows(qid)[0]
+        except Exception as e:
+            return {"error": str(e)[:200]}
+
     def query_rows(self, qid: str) -> List[Dict[str, str]]:
         """작은 SELECT 결과(id_space_check 등)를 컬럼명->값 dict 리스트로 읽는다."""
         rows, header = [], None

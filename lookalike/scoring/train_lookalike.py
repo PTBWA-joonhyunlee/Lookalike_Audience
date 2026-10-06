@@ -130,8 +130,9 @@ def train(
     imbalance: str = "posweight",
     patience: int = 5,
     weight_decay: float = 0.0,
-) -> None:
-    """embeddings(DataFrame: device_ifa + embed_cols)를 직접 주면 variant.sources CSV를 읽지 않는다 —
+) -> dict:
+    """학습 설정 + 결과(best epoch, history 등)를 dict로 돌려준다 — 호출부가 config.json으로 저장한다.
+    embeddings(DataFrame: device_ifa + embed_cols)를 직접 주면 variant.sources CSV를 읽지 않는다 —
     seed/pool 임베딩이 서로 다른 파일에 있는 새 파이프라인(run_seed_scenario1.py)용."""
     device = resolve_device(device)
     print(f"[INFO] variant={variant.name} device={device} imbalance={imbalance}")
@@ -155,3 +156,12 @@ def train(
     variant.artifact_dir.mkdir(parents=True, exist_ok=True)
     torch.save(res["state_dict"], variant.model_path)
     print(f"[INFO] 모델 저장: {variant.model_path}")
+    return {
+        "imbalance": imbalance, "num_epochs": num_epochs, "batch_size": batch_size, "learning_rate": lr,
+        "weight_decay": weight_decay, "patience": patience, "val_split": val_split, "split_seed": seed,
+        "hidden_dim": config.HIDDEN_DIM, "dropout": config.DROPOUT, "embed_dim": variant.embed_dim,
+        "device": str(device), "n_seed": int(y.sum()), "n_pool": int((y == 0).sum()),
+        "n_train": int(len(train_idx)), "n_val": int(n_val),
+        "best_epoch": res["best_epoch"], "best_val_auc": res["best_val_auc"],
+        "epochs_run": len(res["history"]), "history": res["history"],
+    }

@@ -223,11 +223,33 @@ def render_seed_segment_query(temp_table: str, mode: str, crosswalk_col: str = N
 
 # ---------- candidate segment ----------
 
-def render_candidate_segment_query(periods: List[Tuple[str, str]]) -> str:
-    """candidate 정의(bid log 기간 + region=KR/OS=Android + skp 세그먼트 보유 + 컴플라이언스) +
-    세그먼트 피처 추출. 기존 seed 제외는 하지 않는다 — 후보를 기간별 캐시로 재사용하고,
-    seed 제외는 스코어링 직전에 로컬에서 한다(그래서 이 결과는 seed가 늘어도 그대로 유효하다)."""
+_SALT_RE = re.compile(r"^[A-Za-z0-9_.\-]*$")
+
+
+def render_population_segment_query(periods: List[Tuple[str, str]], sample_pct: float = None,
+                                    sample_salt: str = "", region_prefix: str = "KR",
+                                    android_only: bool = True) -> str:
+    """모집단(= candidate 또는 pool) 정의 + 세그먼트 피처 추출. bid log 기간 + region + OS + skp 세그먼트
+    보유 + 컴플라이언스(collect=1, lmt!=1) + device_ifa UUID 형식. 기존 seed 제외는 하지 않는다 —
+    후보는 기간별 캐시로 재사용하고 seed 제외는 스코어링 직전에 로컬에서 한다.
+
+    sample_pct(0 초과 100 이하)를 주면 device_ifa 해시로 그 비율만 추출한다 — 부호 없는 crc32 +
+    mod(10000)(0.01% 단위, CLAUDE.md 해시 표본 규칙). sample_salt가 다르면 서로 다른 표본이 나온다."""
+    if sample_pct is not None and not (0 < sample_pct <= 100):
+        raise ValueError(f"sample_pct는 0 초과 100 이하여야 합니다: {sample_pct}")
+    if not _SALT_RE.match(sample_salt):
+        raise ValueError(f"sample_salt는 영문/숫자/_.- 만 가능합니다: {sample_salt!r}")
+    if not re.match(r"^[A-Z]{2}$", region_prefix):
+        raise ValueError(f"region_prefix는 대문자 2글자(예: KR)여야 합니다: {region_prefix!r}")
+
     period_where = _render_multi_period_predicate(list(periods))
+    extra = ""
+    if sample_pct is not None and sample_pct < 100:
+        key = "CAST(b.device_ifa AS VARCHAR)" + (f" || ':{sample_salt}'" if sample_salt else "")
+        extra += f"\n      AND mod(crc32(to_utf8({key})), 10000) < {int(round(sample_pct * 100))}"
+    if android_only:
+        extra += "\n      AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$')"
+
     candidates_block = f"""WITH segments_latest AS (
     SELECT
         ad_id AS device_ifa,
@@ -253,8 +275,7 @@ candidates AS (
       AND regexp_like(CAST(b.device_ifa AS VARCHAR), '{UUID_RE}')
       AND CAST(b.req_ext_allow_user_data_collection AS VARCHAR) = '1'
       AND (b.device_lmt IS NULL OR CAST(b.device_lmt AS VARCHAR) <> '1')
-      AND CAST(b.device_geo_region AS VARCHAR) LIKE 'KR%'
-      AND regexp_like(CAST(b.device_osv AS VARCHAR), '^[0-9]+$')
+      AND CAST(b.device_geo_region AS VARCHAR) LIKE '{region_prefix}%'{extra}
 ),
 seg1 AS (
     SELECT c.device_ifa, split(sl.segments, ';') AS segment_ids
@@ -265,6 +286,16 @@ seg1 AS (
     body = _template_body()
     matched_onward = body[body.index("matched AS ("):]
     return strip_line_comments(candidates_block + matched_onward).strip().rstrip(";")
+
+
+def render_candidate_segment_query(periods: List[Tuple[str, str]]) -> str:
+    """후보 모집단(region=KR, Android, 표본 없음)."""
+    return render_population_segment_query(periods)
+
+
+def render_explain(select_sql: str) -> str:
+    """스캔 없이 구문/권한/테이블만 검증한다(Athena EXPLAIN)."""
+    return f"EXPLAIN {select_sql}"
 
 
 # ---------- UNLOAD ----------
@@ -279,3 +310,10 @@ def render_unload(select_sql: str, s3_prefix: str) -> str:
         f"TO '{s3_prefix}'\n"
         "WITH (format = 'TEXTFILE', field_delimiter = ',', compression = 'GZIP')"
     )
+
+
+def render_skp_snapshot() -> str:
+    """skp 세그먼트는 'ad_id별 최신 레코드'를 쓰므로 추출 시점의 최신 파티션 날짜가 곧 세그먼트 스냅샷이다.
+    $partitions 메타데이터 조회라 스캔 비용이 없다(lineage 기록용)."""
+    return ("SELECT max(concat(year, '-', month, '-', day)) AS latest_partition, count(*) AS n_partitions "
+            'FROM "propfit"."ptbwa_skp$partitions"')

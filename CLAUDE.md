@@ -34,7 +34,8 @@ data/       쿼리 결과 CSV / 임베딩 / 모델 아티팩트(git 추적 안 �
 
 **2026-10-02부터 Athena/S3를 boto3로 직접 호출할 수 있다**(`lookalike/pipeline/athena.py`, 자격증명은
 `config/LAL_accessKeys.csv` — git 제외, 값 출력 금지, IAM 정책은 `config/iam/`). 신규 seed 시나리오는
-`lookalike/pipeline/run_seed_scenario1.py`가 전부 자동으로 돌린다(경로 규칙: `lookalike/pipeline/paths.py`,
+`lookalike/pipeline/run_seed_scenario1.py`(시나리오 1), pool 추출 + 오토인코더 재학습은
+`run_ae_scenario2.py`(시나리오 2)가 전부 자동으로 돌린다(경로 규칙: `lookalike/pipeline/paths.py`,
 로컬 `data/`와 `s3://ptbwa-dw/prod/lookalike/`가 같은 상대 경로). 테이블은 영구 생성하지 않는다 —
 seed 목록은 임시 외부 테이블(`dev-ptbwa-da._tmp_lookalike_*`, 끝나면 DROP), 결과는 UNLOAD로 S3에
 내보낸 뒤 다운로드. 비용이 큰 쿼리(후보 추출 등)를 임의로 실행하지 말고 사용자 요청이 있을 때만

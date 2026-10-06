@@ -1,139 +1,219 @@
 # lookalike/train/segment_features.py
 #
-# segment_features Autoencoder를 학습하고 model.pt를 저장한다. 임베딩 추출은 하지 않는다.
-# 실행 전에 반드시 `python -m embedding.segment_features.build_features`로
-# segment_features.npz/segment_bert_lookup.npz/age_bracket_vocab.json을 먼저 만들어야 한다 —
-# 이 스크립트는 그 결과를 읽기만 하고, BERT 인코딩(무거운 부분)은 다시 하지 않는다.
+# segment_features Autoencoder 학습(시나리오 2). pool segment CSV로 피처를 만들고, 학습한 모델과
+# 그 모델을 쓰는 데 필요한 vocab/lookup/config.json을 ae_dir(= data/autoencoders/<ae_version>/)에
+# 한 벌로 저장한다 — embedding/segment_features/artifacts.py 참고. 임베딩 추출은 하지 않는다
+# (inference/segment_features.py, pipeline/encode.py).
 #
-# 실행(저장소 루트가 아니라 lookalike/ 안에서 cd 후 실행):
-#   cd seed && ..\.venv\Scripts\python.exe -m train.segment_features [--input <npz>] [--output <저장 경로>] [--config <json>]
-# 입력: --input 생략 시 embedding/segment_features/config.ARTIFACT_DIR/segment_features.npz
-# 출력: --output 생략 시 같은 디렉터리에 model.pt
+# 재구성 손실의 복원 타깃에는 .detach()를 적용한다(인코더/디코더가 서로를 향해 임의의 상수로
+# 붕괴하는 것을 막는다 — embedding/segment_features/model.py 주석 참고).
 
-import argparse
-import logging
-import os
+import copy
+import json
+import subprocess
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import pandas as pd
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 
+from collections import Counter
+
 from embedding.common.device import resolve_device
-from embedding.common.train_config import load_train_config
-from embedding.common.vocab import CategoryVocab
-from embedding.segment_features import config
+from embedding.segment_features import artifacts, config
 from embedding.segment_features.bert_lookup import SegmentEmbeddingLookup
+from embedding.common.vocab import CategoryVocab
+from embedding.segment_features.build_features import _first_id, build
 from embedding.segment_features.dataset import SegmentFeaturesDataset
-from embedding.segment_features.model import POOLED_GROUPS, SegmentFeaturesAutoencoder
-
-logger = logging.getLogger(__name__)
+from embedding.segment_features.model import POOLED_GROUPS
 
 
-def _resolve_npz_path(input_path: Optional[str] = None) -> str:
-    path = input_path or str(config.ARTIFACT_DIR / "segment_features.npz")
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"{path} 가 없습니다 — 먼저 `python -m embedding.segment_features.build_features`를 실행하세요."
-        )
-    return path
+@dataclass
+class TrainParams:
+    num_epochs: int = config.NUM_EPOCHS
+    batch_size: int = config.BATCH_SIZE
+    learning_rate: float = config.LEARNING_RATE
+    val_split: float = 0.05        # 재구성 손실 검증용(에폭 선택에 쓴다)
+    patience: int = 5              # val 손실이 이만큼 안 내려가면 중단
+    seed: int = 42
 
 
-def train(
-    num_epochs: int = config.NUM_EPOCHS,
-    batch_size: int = config.BATCH_SIZE,
-    lr: float = config.LEARNING_RATE,
-    input_path: Optional[str] = None,
-    artifact_dir: Optional[str] = None,
+def git_commit() -> Optional[str]:
+    """현재 HEAD 짧은 해시. 커밋 안 된 변경이 있으면 '+dirty'를 붙인다(재현 가능성 표시)."""
+    try:
+        cwd = Path(__file__).resolve().parent
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=cwd, timeout=10).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, cwd=cwd, timeout=10).stdout.strip()
+        return (head + ("+dirty" if dirty else "")) or None
+    except Exception:
+        return None
+
+
+def _count_csv_rows(path: Path, chunk: int = 1 << 22) -> int:
+    newline = b"\n"
+    n, last = 0, newline
+    with open(path, "rb") as f:
+        while block := f.read(chunk):
+            n += block.count(newline)
+            last = block[-1:]
+    return max(n + (0 if last == newline else 1) - 1, 0)   # 헤더 제외
+
+
+def prepare_ae_dir(ae_dir: Path, pool_segment_csv: Path, max_rows: Optional[int] = None, seed: int = 42,
+                   chunk_rows: int = 500_000, bert_lookup_from: Path = None):
+    """pool segment CSV로 학습용 피처 npz와 age vocab을 만들고 lookup을 ae_dir에 놓는다.
+    반환: (npz 경로, 데이터 정보 dict).
+
+    메모리: CSV를 chunk_rows씩 두 번 훑는다(1: age vocab 집계, 2: 피처 인코딩) — 전체를 DataFrame으로
+    올리지 않고, 인덱스 배열은 int32로 저장한다(행당 약 0.8KB). max_rows보다 pool이 크면 seed 고정
+    무작위(비복원)로 max_rows행만 학습에 쓴다 — 어떤 행을 썼는지 재현 가능하도록 seed를 기록한다.
+    lookup은 taxonomy에만 의존하고 데이터와 무관하므로 기본은 legacy 것을 복사한다."""
+    ae_dir.mkdir(parents=True, exist_ok=True)
+    lookup_path = ae_dir / artifacts.BERT_LOOKUP_FILE
+    if not lookup_path.exists():
+        src = bert_lookup_from if bert_lookup_from is not None else config.BERT_LOOKUP_PATH
+        if Path(src).exists():
+            lookup_path.write_bytes(Path(src).read_bytes())
+        else:
+            SegmentEmbeddingLookup.build().save(lookup_path)
+    lookup = SegmentEmbeddingLookup.load(lookup_path)
+
+    n_total = _count_csv_rows(pool_segment_csv)
+    keep = None
+    if max_rows and n_total > max_rows:
+        keep = np.zeros(n_total, dtype=bool)
+        keep[np.random.default_rng(seed).choice(n_total, size=max_rows, replace=False)] = True
+    n_used = int(keep.sum()) if keep is not None else n_total
+    print(f"[INFO] pool segment {n_total:,}행 중 {n_used:,}행으로 학습 피처 생성 "
+          f"({'무작위 샘플 seed=%d' % seed if keep is not None else '전체'})")
+
+    def chunks():
+        offset = 0
+        for df in pd.read_csv(pool_segment_csv, dtype=str, chunksize=chunk_rows):
+            part = df[keep[offset:offset + len(df)]] if keep is not None else df
+            offset += len(df)
+            if len(part):
+                yield part.reset_index(drop=True)
+
+    counter = Counter()
+    for df in chunks():                                   # pass 1: age vocab
+        counter.update(CategoryVocab._normalize(v) for v in df[config.AGE_BRACKET_ID_COL].map(_first_id))
+    age_vocab = CategoryVocab.build_from_counter(counter)
+    age_vocab.save(ae_dir / artifacts.AGE_VOCAB_FILE)
+
+    parts = {}
+    for i, df in enumerate(chunks()):                     # pass 2: 피처
+        features, _ = build(df, lookup, age_vocab=age_vocab)
+        for k, v in features.items():
+            if k.endswith("_idx"):
+                v = v.astype(np.int32)
+            parts.setdefault(k, []).append(v)
+        if i % 5 == 0:
+            print(f"[INFO] 피처 청크 {i} 완료")
+    merged = {k: np.concatenate(v) for k, v in parts.items()}
+    npz_path = ae_dir / "segment_features_pool.npz"
+    np.savez(npz_path, **merged)
+    print(f"[INFO] {n_used:,}명 -> {npz_path}")
+    return npz_path, {"n_pool_total": n_total, "n_rows_used": n_used, "subsampled": keep is not None,
+                      "subsample_seed": seed if keep is not None else None, "max_rows": max_rows}
+
+
+def train_ae(
+    ae_dir: Path,
+    npz_path: Path,
+    params: TrainParams = None,
+    spec: artifacts.ModelSpec = None,
     device: str = "auto",
-) -> None:
+) -> dict:
+    """ae_dir에 vocab/lookup이 이미 있어야 한다(prepare_ae_dir). val 재구성 손실이 가장 낮은 에폭의
+    가중치를 model.pt로 저장하고, 학습 결과(history 포함)를 dict로 돌려준다."""
+    params = params or TrainParams()
+    spec = spec or artifacts.ModelSpec()
     device = resolve_device(device)
-    logger.info("device=%s", device)
-    print(f"[INFO] device={device}")
+    torch.manual_seed(params.seed)
+    print(f"[INFO] device={device} params={asdict(params)} model={spec.to_dict()}")
 
-    npz_path = _resolve_npz_path(input_path)
-    print(f"[INFO] segment_features 소스: {npz_path}")
     dataset = SegmentFeaturesDataset(npz_path)
-    loader = DataLoader(dataset, batch_size=min(batch_size, len(dataset)), shuffle=True)
+    n = len(dataset)
+    perm = np.random.default_rng(params.seed).permutation(n)
+    n_val = int(n * params.val_split)
+    val_idx, train_idx = perm[:n_val], perm[n_val:]
+    train_loader = DataLoader(Subset(dataset, train_idx), batch_size=min(params.batch_size, len(train_idx)), shuffle=True)
+    val_loader = DataLoader(Subset(dataset, val_idx), batch_size=4096, shuffle=False)
 
-    age_vocab = CategoryVocab.load(config.AGE_VOCAB_PATH)
-    bert_lookup = SegmentEmbeddingLookup.load(config.BERT_LOOKUP_PATH)
-    bert_lookup_vectors = torch.tensor(bert_lookup.vectors, dtype=torch.float32)
+    model = artifacts.build_model(ae_dir, spec).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate)
+    gender_criterion, age_criterion = torch.nn.MSELoss(), torch.nn.CrossEntropyLoss()
 
-    model = SegmentFeaturesAutoencoder(
-        age_vocab_size=len(age_vocab),
-        bert_lookup_vectors=bert_lookup_vectors,
-        age_embed_dim=config.AGE_EMBED_DIM,
-        proj_dims=config.PROJ_DIMS,
-        hidden_dim=config.HIDDEN_DIM,
-        z_dim=config.EMBED_DIM,
-        freeze_bert_lookup=config.FREEZE_BERT_LOOKUP,
-    ).to(device)
+    def batch_loss(batch):
+        _, gender_pred, age_logits, projections, recons = model(batch)
+        loss = gender_criterion(gender_pred, batch["gender_score"]) + age_criterion(age_logits, batch["age_bracket_idx"])
+        for g in POOLED_GROUPS:
+            loss = loss + torch.nn.functional.mse_loss(recons[g], projections[g].detach())
+        return loss
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    gender_criterion = torch.nn.MSELoss()
-    age_criterion = torch.nn.CrossEntropyLoss()
-
-    model.train()
-    for epoch in range(1, num_epochs + 1):
-        total_loss = 0.0
-        for _, batch in tqdm(loader, desc=f"epoch {epoch}/{num_epochs}", leave=False, mininterval=5.0):
+    best = {"val_loss": float("inf"), "epoch": 0, "state": None}
+    history, stale = [], 0
+    for epoch in range(1, params.num_epochs + 1):
+        model.train()
+        total = 0.0
+        for _, batch in tqdm(train_loader, desc=f"epoch {epoch}/{params.num_epochs}", leave=False, mininterval=5.0):
             batch = {k: v.to(device) for k, v in batch.items()}
-
             optimizer.zero_grad()
-            _, gender_pred, age_logits, group_projections, group_recons = model(batch)
-
-            loss = gender_criterion(gender_pred, batch["gender_score"])
-            loss = loss + age_criterion(age_logits, batch["age_bracket_idx"])
-            # 복원 타깃(인코더의 projection 출력)에 detach — 그렇지 않으면 인코더/디코더가
-            # 서로를 향해 임의의 상수로 붕괴할 수 있음(model.py 상단 주석 참고).
-            for g in POOLED_GROUPS:
-                loss = loss + torch.nn.functional.mse_loss(group_recons[g], group_projections[g].detach())
-
+            loss = batch_loss(batch)
             loss.backward()
             optimizer.step()
-            total_loss += loss.item() * batch["gender_score"].shape[0]
+            total += loss.item() * batch["gender_score"].shape[0]
+        train_loss = total / len(train_idx)
 
-        avg_loss = total_loss / len(dataset)
-        logger.info("epoch %d/%d loss=%.6f", epoch, num_epochs, avg_loss)
-        print(f"[epoch {epoch}/{num_epochs}] loss={avg_loss:.6f}")
+        model.eval()
+        v_total = 0.0
+        with torch.no_grad():
+            for _, batch in val_loader:
+                batch = {k: v.to(device) for k, v in batch.items()}
+                v_total += batch_loss(batch).item() * batch["gender_score"].shape[0]
+        val_loss = v_total / max(len(val_idx), 1)
+        history.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss})
+        print(f"[epoch {epoch}/{params.num_epochs}] train_loss={train_loss:.6f} val_loss={val_loss:.6f}")
 
-    artifact_dir = artifact_dir or str(config.ARTIFACT_DIR)
-    os.makedirs(artifact_dir, exist_ok=True)
-    model_path = os.path.join(artifact_dir, "model.pt")
-    torch.save(model.state_dict(), model_path)
-    print(f"[INFO] 모델 저장: {model_path}")
+        if val_loss < best["val_loss"]:
+            best.update(val_loss=val_loss, epoch=epoch, state=copy.deepcopy(model.state_dict()))
+            stale = 0
+        else:
+            stale += 1
+            if stale >= params.patience:
+                print(f"[INFO] early stop: {params.patience} 에폭 동안 val 손실 개선 없음(best epoch {best['epoch']})")
+                break
 
-
-def main():
-    parser = argparse.ArgumentParser(description="segment_features Autoencoder를 학습하고 모델을 저장한다.")
-    parser.add_argument("--input", help=f"segment_features.npz 경로 (생략 시 기본값: {config.ARTIFACT_DIR / 'segment_features.npz'})")
-    parser.add_argument("--output", help=f"모델 저장 디렉터리 (생략 시 기본 경로: {config.ARTIFACT_DIR})")
-    parser.add_argument(
-        "--config",
-        help="dataset_path/output_model_path/num_epochs/batch_size/learning_rate/device를 담은 JSON 설정 파일 "
-        "(config/train_config.example.json 참고). --input/--output/--device를 같이 주면 그 값이 우선한다.",
-    )
-    parser.add_argument(
-        "--device",
-        choices=["auto", "cpu", "cuda"],
-        help="학습에 쓸 디바이스 (기본값: auto, cuda 사용 가능하면 cuda, 아니면 cpu)",
-    )
-    args = parser.parse_args()
-
-    cfg = load_train_config(args.config) if args.config else {}
-    input_path = args.input or cfg.get("dataset_path")
-    artifact_dir = args.output or cfg.get("output_model_path")
-    num_epochs = cfg.get("num_epochs", config.NUM_EPOCHS)
-    batch_size = cfg.get("batch_size", config.BATCH_SIZE)
-    lr = cfg.get("learning_rate", config.LEARNING_RATE)
-    device = args.device or cfg.get("device", "auto")
-
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    print("=== segment_features 임베딩(Autoencoder) 학습 시작 ===")
-    train(num_epochs=num_epochs, batch_size=batch_size, lr=lr, input_path=input_path, artifact_dir=artifact_dir, device=device)
-    print("=== 완료 ===")
+    torch.save(best["state"], ae_dir / artifacts.MODEL_FILE)
+    print(f"[INFO] best epoch {best['epoch']} (val_loss={best['val_loss']:.6f}) 모델 저장: {ae_dir / artifacts.MODEL_FILE}")
+    return {
+        **asdict(params), "device": str(device), "n_train": int(len(train_idx)), "n_val": int(n_val),
+        "best_epoch": best["epoch"], "best_val_loss": best["val_loss"], "epochs_run": len(history),
+        "history": history, "torch_version": torch.__version__,
+    }
 
 
-if __name__ == "__main__":
-    main()
+def write_config(ae_dir: Path, ae_version: str, spec: artifacts.ModelSpec, train_result: dict, pool_spec: dict,
+                 age_vocab_size: int) -> Path:
+    cfg = {
+        "ae_version": ae_version,
+        "trained_at": datetime.now().isoformat(timespec="seconds"),
+        "git_commit": git_commit(),
+        "model": spec.to_dict(),
+        "features": {
+            "pooled_max_len": config.POOLED_MAX_LEN, "age_vocab_size": age_vocab_size,
+            "bert_model": config.BERT_MODEL_NAME, "embed_dim": spec.z_dim,
+        },
+        "train": train_result,
+        "pool": {k: v for k, v in pool_spec.items() if k != "dir"},
+        "files": {"model_sha256": artifacts.file_sha256(ae_dir / artifacts.MODEL_FILE)},
+    }
+    path = ae_dir / artifacts.CONFIG_FILE
+    path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    return path

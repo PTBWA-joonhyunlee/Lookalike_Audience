@@ -22,23 +22,56 @@ UNLOAD -> candidate segment UNLOAD(기간별 캐시 `data/candidates/<period_key
 - pool: `data/pools/<pool_id>/pool_spec.json`(기본 `legacy` = 기존 pool, 2026-04~05). candidate 기간이
   pool 기간과 겹치면 거부한다. 오토인코더는 아직 `legacy`만 지원.
 
-## 시나리오 2 — 오토인코더 재학습 (미구현)
+## 시나리오 2 — pool 추출 + 오토인코더 재학습 (구현됨)
 
-pool 조건 입력 -> pool segment 추출 -> 오토인코더 재학습. 이 단계가 `data/pools/`, `data/autoencoders/`를 만든다.
+pool 조건(추출 기간, 표본 비율, region, OS)을 지정하면 pool segment를 Athena에서 추출(UNLOAD)하고
+오토인코더를 학습한다. 오토인코더 버전 하나 = `data/autoencoders/<ae_version>/` 디렉터리 하나.
+
+```
+cd lookalike
+..\.venv\Scripts\python.exe -m pipeline.run_ae_scenario2 --pool-id pool_2026-04_05_s5 ^
+    --period 2026-04-01:2026-05-31 --sample-pct 5 --epochs 30
+#   --explain-only: Athena EXPLAIN으로 쿼리만 검증(스캔 비용 없음)   --dry-run: 경로/상태만 출력
+```
+
+| 옵션 | 의미 |
+|---|---|
+| `--period` | pool 추출 기간(bid log 활동 기준, 반복 가능, 시작은 월 1일·같은 연도) |
+| `--sample-pct` / `--sample-salt` | device_ifa crc32 해시 표본 비율(%, 0.01% 단위, 기본 5) / 다른 salt = 다른 표본 |
+| `--region` / `--any-os` | device_geo_region 접두사(기본 KR) / Android 필터 해제 |
+| `--ae-version` | 저장 이름(기본 `ae_<pool_id>_<날짜>`) |
+| `--epochs --batch-size --lr --hidden-dim --age-embed-dim --val-split --patience --seed` | 학습 설정(z 차원은 32 고정) |
+
+- 같은 `--pool-id`에 다른 조건을 주면 거부한다(pool은 불변, 새 이름을 쓸 것).
+- 산출물: `data/pools/<pool_id>/{pool_spec.json, pool_segment.csv, emb_<ae_version>.csv}`,
+  `data/autoencoders/<ae_version>/{model.pt, age_bracket_vocab.json, segment_bert_lookup.npz, config.json}`.
+  모델은 val 재구성 손실이 가장 낮은 에폭의 가중치다.
+- `config.json`: 모델 구조 + 학습 설정 + 에폭별 손실(history) + 학습 pool 조건 + git commit + model.pt 해시.
+
+시나리오 1에서 만든 오토인코더를 쓰려면 `--ae-version <이름>`을 준다(기본 `legacy` = 시나리오 2 이전 모델).
+`--pool-id`를 생략하면 그 오토인코더를 학습한 pool을 쓴다.
+
+## 어떤 임베딩 모델을 썼는지 기록
+
+시나리오 1의 모든 산출물이 오토인코더에 묶여 있다 — `data/seeds/<seed>/<run_id>/`:
+`ae_binding.json`(ae_version + model.pt 해시, 다른 오토인코더로 같은 run을 이어 실행하면 거부),
+`model/config.json`(`autoencoder` 블록 + `classifier_train` 학습 설정/결과), `run.json`(`autoencoder`).
+후보 임베딩 캐시도 `candidates/<period_key>/emb_<ae_version>.csv`로 버전별이다.
 
 ## 경로 규칙 (`pipeline/paths.py`)
 
 로컬 `data/`와 `s3://ptbwa-dw/prod/lookalike/`가 같은 상대 경로를 쓴다.
 
 ```
-autoencoders/<ae_version>/   pools/<pool_id>/   candidates/<period_key>/
+autoencoders/<ae_version>/   pools/<pool_id>/   candidates/<period_key>/   (legacy 오토인코더만 data/models/segment_features/)
 seeds/<seed>/input/          seeds/<seed>/<run_id>/{seed_segment.csv, model/, scores/}
 ```
 
 ## 폴더 구조
 
 ```
-pipeline/   athena.py(boto3 래퍼) athena_queries.py(SQL 렌더러) encode.py paths.py run_seed_scenario1.py
+pipeline/   athena.py(boto3 래퍼) athena_queries.py(SQL 렌더러) encode.py paths.py
+            run_seed_scenario1.py run_ae_scenario2.py
 queries/    templates/segment_features.sql(taxonomy 정본) segment/01_pool_segment.sql lib/
 embedding/  세그먼트 임베딩 Autoencoder 정의/피처 빌드      train/  오토인코더 학습
 inference/  임베딩 추출/병합                               scoring/  분류기 학습/스코어링
