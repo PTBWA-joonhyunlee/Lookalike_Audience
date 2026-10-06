@@ -22,6 +22,37 @@ UNLOAD -> candidate segment UNLOAD(기간별 캐시 `data/candidates/<period_key
 - pool: `data/pools/<pool_id>/pool_spec.json`(기본 `legacy` = 기존 pool, 2026-04~05). candidate 기간이
   pool 기간과 겹치면 거부한다. 오토인코더는 아직 `legacy`만 지원.
 
+## 시나리오 1 변형 — Athena seed 테이블 + 멀티라벨 (구현됨)
+
+seed가 이미 Athena 테이블이거나 seed가 여러 개일 때. 업로드/임시 테이블 없이 테이블을 직접 읽고, seed 하나당
+sigmoid 헤드 하나인 멀티라벨 분류기(공유 trunk, 라벨별 `pos_weight`, 라벨 조합별 층화 분할)를 한 번에 학습한다.
+한 유저가 여러 seed에 동시에 속할 수 있고 pool은 모든 라벨이 0이다. seed 간 포함 관계가 크면(한 seed가 다른
+seed의 부분집합이면) 두 점수가 비슷해져 교집합이 구조적으로 높게 나온다.
+
+```
+cd lookalike
+..\.venv\Scripts\python.exe -u -m pipeline.run_seed_table_multilabel --group sepo_ctv ^
+    --seed sepo_17177=dev-ptbwa-da.sepo_17177:adid --seed sepo_17179=dev-ptbwa-da.sepo_17179:adid ^
+    --ae-version ae_2024-09_2026-09_s30 --period 2026-03-01:2026-09-30 --allow-overlap ^
+    --target-union 1500000 --report-pcts 2,4,6,8,10 --run-id r1 --output-table sepo_lal_150
+#   --dry-run: 경로/상태만   --publish-only --output-table T: 추출은 건너뛰고 기존 결과로 테이블만 생성
+```
+
+| 옵션 | 의미 |
+|---|---|
+| `--seed 라벨=DB.테이블:컬럼` | Athena seed 테이블(반복 가능). UUID 형식 필터는 걸지 않고 매칭은 id_space_check가 판정 |
+| `--id-mode` | 자동 판정이 애매할 때 지정: `direct` / `crosswalk:uuid` / `crosswalk:platform_ad_id` |
+| `--target-union N` | 모든 seed에 같은 상위 pct를 주되 합집합이 N에 가장 가까운 pct를 이분 탐색(없으면 `--top-pct`) |
+| `--report-pcts` | 이 pct들마다 seed 쌍별 교집합 표 생성(교집합 / seed 인원, 기본 2,4,6,8,10) |
+| `--output-table T` | 끝에서 `union_top.csv`를 `s3://.../delivery/<group>/<run_id>/T/`에 올리고 `dev-ptbwa-da.T` 외부 테이블 생성 |
+
+- 산출물 `data/seeds/<group>/<run_id>/`: `seed_segments/<라벨>.csv`, `id_space_check_<라벨>.json`, `model/model_multilabel.pt`,
+  `scores/{candidate_scores.csv, union_top.csv, top_<라벨>.csv, overlap_by_pct.csv}`. 테이블 컬럼:
+  `device_ifa, score_<라벨>…, in_<라벨>…`.
+- `--output-table`은 같은 이름의 테이블이 있으면 덮어쓰지 않고 중단하며, 생성 후 행 수를 파일과 대조한다.
+  IAM에 `glue:CreateTable`(dev-ptbwa-da)이 필요하다(`config/iam/`).
+- **같은 run-id의 실행기를 동시에 두 개 띄우지 않는다**(Athena 쿼리 중복, 후보 CSV 행 2배, 임베딩 파일 충돌 — 루트 `CLAUDE.md` 규칙).
+
 ## 시나리오 2 — pool 추출 + 오토인코더 재학습 (구현됨)
 
 pool 조건(추출 기간, 표본 비율, region, OS)을 지정하면 pool segment를 Athena에서 추출(UNLOAD)하고
@@ -65,14 +96,15 @@ cd lookalike
 ```
 autoencoders/<ae_version>/   pools/<pool_id>/   candidates/<period_key>/   (legacy 오토인코더만 data/models/segment_features/)
 seeds/<seed>/input/          seeds/<seed>/<run_id>/{seed_segment.csv, model/, scores/}
+delivery/<group>/<run_id>/<table>/   (--output-table 결과 CSV, 외부 테이블 위치)
 ```
 
 ## 폴더 구조
 
 ```
 pipeline/   athena.py(boto3 래퍼) athena_queries.py(SQL 렌더러) encode.py paths.py
-            run_seed_scenario1.py run_ae_scenario2.py
+            run_seed_scenario1.py run_seed_table_multilabel.py run_ae_scenario2.py
 queries/    templates/segment_features.sql(taxonomy 정본) segment/01_pool_segment.sql lib/
 embedding/  세그먼트 임베딩 Autoencoder 정의/피처 빌드      train/  오토인코더 학습
-inference/  임베딩 추출/병합                               scoring/  분류기 학습/스코어링
+inference/  임베딩 추출/병합                               scoring/  분류기 학습/스코어링(multilabel.py = 멀티라벨)
 ```
