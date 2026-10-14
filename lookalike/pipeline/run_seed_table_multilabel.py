@@ -79,8 +79,10 @@ class MultiRun(Run):
         if len({s.label for s in seeds}) != len(seeds):
             raise ValueError("--seed 라벨이 중복됩니다")
         args.seed_name = args.group
+        user_top_pct = args.top_pct
         args.top_pct = 100.0     # 부모 필드용(이 실행기는 pct를 --target-union/--top-pct로 따로 정한다)
         super().__init__(args)
+        args.top_pct = user_top_pct   # 부모 초기화 뒤 복원 — 안 하면 --top-pct가 항상 100으로 덮인다
         self.seeds = seeds
         self.labels = [s.label for s in seeds]
         self.seed_dir = self.run_dir / "seed_segments"
